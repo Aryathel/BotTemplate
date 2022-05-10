@@ -11,9 +11,6 @@ from pyshorteners import Shortener
 
 from utils.embeds import EmbedFactory
 import database
-from templates.views import BanForm
-
-TOKEN = os.getenv('BOT_TOKEN')
 
 
 class AryaCommandTree(app_commands.CommandTree):
