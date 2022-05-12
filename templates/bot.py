@@ -1,22 +1,157 @@
-import os
-import traceback
-from typing import Optional, Any, Type, Union, List, Dict
-
 import asyncio
+import traceback
+from typing import Optional, Any, Type, Union, List, Dict, Mapping, TypeVar, Generator
+
 import asyncpg
 import discord
 from discord import app_commands
 from discord.ext import commands
+from discord.utils import MISSING
 from pyshorteners import Shortener
 
 import database
 from utils import LogType, EmbedFactory, log
 from utils import TermColor as color
+from .commands import Command, Group
+
+BotType = TypeVar('BotType', bound='Bot')
 
 
-class AryaBot(commands.Bot):
+class Intents(discord.Intents):
+    def update(self, **kwargs):
+        for key, val in kwargs.items():
+            setattr(self, key, val)
+
+
+class Interaction(discord.Interaction):
+    client: BotType
+
+
+class Cog(commands.Cog):
+    bot: BotType
+    name: str
+    description: str
+    icon: str
+    slash_commands: List[str]
+    help: str = None
+
+    def __init__(self, bot: BotType):
+        self.bot = bot
+
+    def cog_load(self) -> None:
+        self.bot.log(f'{self.qualified_name} loaded...')
+
+    def cog_unload(self) -> None:
+        self.bot.log(f'{self.qualified_name} unloaded...')
+
+    @property
+    def long_description(self) -> str:
+        if self.help is not None:
+            if self.description not in ['...', None, MISSING]:
+                return f'{self.description}\n\n{self.help}'
+            return self.help
+        else:
+            return self.description
+
+
+class CommandTree(app_commands.CommandTree):
+    client: BotType
+    _guild_commands: Dict[int, Dict[str, Union[Command, Group]]]
+    _global_commands: Dict[str, Union[Command, Group]]
+
+    async def on_error(self, interaction: Interaction, error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.CommandInvokeError):
+            error = error.original
+
+        if interaction.extras.get('handled', False):
+            return
+
+        needs_syncing = (
+            app_commands.CommandSignatureMismatch,
+            app_commands.CommandNotFound
+        )
+
+        if isinstance(error, needs_syncing):
+            await interaction.response.send_message(
+                "Sorry, this command is unavailable. It likely has received an update in the backend, "
+                "and needs to be re-synced.", ephemeral=True
+            )
+            self.client.log(
+                f'Commands need to be synced. Source: "{interaction.command.name}"',
+                urgent=True,
+                log_type=LogType.warning
+            )
+        elif isinstance(error, app_commands.BotMissingPermissions):
+            perms = []
+            for p in error.missing_permissions:
+                perms.append(f"`{' '.join(w.capitalize() for w in p.split('_'))}`")
+            await interaction.response.send_message(
+                f'Please give me the following permissions to use this command: {", ".join(perms)}',
+                ephemeral=True
+            )
+        elif isinstance(error, app_commands.MissingPermissions):
+            perms = []
+            for p in error.missing_permissions:
+                perms.append(f"`{' '.join(w.capitalize() for w in p.split('_'))}`")
+            await interaction.response.send_message(
+                f'You are missing the following permissions to use this command: {", ".join(perms)}',
+                ephemeral=True
+            )
+        elif isinstance(error, app_commands.TransformerError):
+            await interaction.response.send_message(
+                f'Failed to convert `{error.value}` to a `{error.type.name}`.',
+                ephemeral=True
+            )
+        elif isinstance(error, discord.Forbidden):
+            await interaction.response.send_message(
+                f'I do not have permission to do that.',
+                ephemeral=True
+            )
+        else:
+            self.client.log(
+                f'Unhandled "{type(error).__name__}" in "{interaction.command.name}" Command',
+                log_type=LogType.error,
+                error=error,
+                divider=True
+            )
+
+        interaction.extras['handled'] = True
+
+    def walk_commands(
+            self,
+            *,
+            guild: Optional[discord.abc.Snowflake] = None,
+            type: discord.AppCommandType = discord.AppCommandType.chat_input,
+    ) -> Union[Generator[Union[Command, Group], None, None], Generator[app_commands.ContextMenu, None, None]]:
+        if type is discord.AppCommandType.chat_input:
+            if guild is None:
+                for cmd in self._global_commands.values():
+                    yield cmd
+                    if isinstance(cmd, Group):
+                        yield from cmd.walk_commands()
+            else:
+                try:
+                    commands = self._guild_commands[guild.id]
+                except KeyError:
+                    return
+                else:
+                    for cmd in commands.values():
+                        yield cmd
+                        if isinstance(cmd, Group):
+                            yield from cmd.walk_commands()
+        else:
+            guild_id = None if guild is None else guild.id
+            value = type.value
+            for ((_, g, t), command) in self._context_menus.items():
+                if g == guild_id and t == value:
+                    yield command
+
+
+class Bot(commands.Bot):
     db: Optional[database.Client]
-    command_autocomplete_list: Dict[str, Union[commands.Cog, app_commands.Command, app_commands.Group]]
+    command_autocomplete_list: Dict[str, Union[Cog, Command, Group]]
+    cogs: Mapping[str, Cog]
+    tree: CommandTree
 
     def __init__(
             self,
@@ -30,13 +165,15 @@ class AryaBot(commands.Bot):
             db_port: Union[str, int],
             db_user: str,
             db_pass: str,
-            tree_cls: Type[app_commands.CommandTree[Any]] = app_commands.CommandTree,
-            embed_factory: EmbedFactory = None
+            tree_cls: Type[app_commands.CommandTree] = CommandTree,
+            embed_factory: EmbedFactory = EmbedFactory()
     ) -> None:
-        intents = discord.Intents.default()
-        intents.members = True
-        intents.presences = True
-        intents.reactions = True
+        intents = Intents.default()
+        intents.update(
+            members=True,
+            presences=True,
+            reactions=True
+        )
 
         # Register internal constants
         self.COGS = [
@@ -55,10 +192,7 @@ class AryaBot(commands.Bot):
         self._db_pass = db_pass
 
         # Register embed factory.
-        if embed_factory:
-            self.embeds = embed_factory
-        else:
-            self.embeds = EmbedFactory()
+        self.embeds = embed_factory
 
         # Register URL shortener
         self.url_shorter = Shortener()
@@ -184,8 +318,8 @@ class AryaBot(commands.Bot):
         cogs = sorted(cogs, key=lambda e: e[0])
         return [c[0] for c in cogs]
 
-    def get_command_autocomplete_list(self) -> Dict[str, Union[commands.Cog, app_commands.Command, app_commands.Group]]:
-        choices: Dict[str, Union[commands.Cog, app_commands.Command, app_commands.Group]] = {}
+    def get_command_autocomplete_list(self) -> Dict[str, Union[Cog, Command, Group]]:
+        choices: Dict[str, Union[Cog, Command, Group]] = {}
         for _, cog in self.cogs.items():
             if not cog.qualified_name == 'admin':
                 choices[cog.name] = cog

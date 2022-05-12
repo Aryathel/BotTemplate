@@ -2,19 +2,14 @@ from math import ceil
 from typing import Any, List, Optional, Dict, Union
 
 import discord
-from discord import app_commands
 
 from utils import EmbedFactory, Menu, MenuPage
-from .bot import AryaBot
-from .cogs import AryaCog
-from .tree import AryaInteraction
-from .commands import AryaCommand, AryaGroup
-
-debug = AryaBot.debug
+from ..bot import Bot, Cog, Interaction
+from ..commands import Command, Group
 
 
 class HelpMenuSelect(discord.ui.Select['HelpMenu']):
-    def __init__(self, commands: Dict[AryaCog, List[app_commands.Command]]):
+    def __init__(self, commands: Dict[Cog, List[Command]]):
         super().__init__(
             placeholder='Select a category...',
             row=0
@@ -37,13 +32,11 @@ class HelpMenuSelect(discord.ui.Select['HelpMenu']):
                 value=cog.qualified_name
             )
 
-    async def callback(self, interaction: AryaInteraction):
+    async def callback(self, interaction: Interaction):
         value = self.values[0]
         if value == '_index':
-            debug("Return the help command index page.")
             await self.view.rebind(HelpMenuIndex(interaction.client.embeds), interaction)
         else:
-            debug(f'Send help command for "{value}"')
             for cog, commands in self.commands.items():
                 if cog.qualified_name == value:
                     await self.view.rebind(
@@ -59,15 +52,15 @@ class HelpMenuSelect(discord.ui.Select['HelpMenu']):
 
 
 class HelpMenu(Menu):
-    def __init__(self, page: MenuPage, interaction: AryaInteraction):
+    def __init__(self, page: MenuPage, interaction: Interaction):
         super().__init__(page=page, interaction=interaction, row=1)
 
-    def add_modules(self, commands: Dict[AryaCog, List[app_commands.Command]]) -> None:
+    def add_modules(self, commands: Dict[Cog, List[Command]]) -> None:
         self.clear_items()
         self.add_item(HelpMenuSelect(commands=commands))
         self.populate()
 
-    async def rebind(self, page: MenuPage, interaction: AryaInteraction) -> None:
+    async def rebind(self, page: MenuPage, interaction: Interaction) -> None:
         self.pages = page
         self.current_page = 1
 
@@ -78,9 +71,11 @@ class HelpMenu(Menu):
 
 
 class HelpMenuCommand(MenuPage):
+    index: int
+
     def __init__(
             self,
-            command: AryaCommand,
+            command: Command,
             embed_factory: EmbedFactory
     ):
         self.command = command
@@ -124,15 +119,17 @@ class HelpMenuCommand(MenuPage):
 
 
 class HelpMenuGroup(MenuPage):
+    index: int
+
     def __init__(
             self,
-            group: AryaGroup,
+            group: Group,
             commands_per_page: int,
             embed_factory: EmbedFactory,
             in_bulk_help: bool
     ):
-        self.group: AryaGroup = group
-        self.commands: List[AryaCommand] = sorted(self.group.commands, key=lambda c: c.qualified_name)
+        self.group: Group = group
+        self.commands: List[Command] = sorted(self.group.commands, key=lambda c: c.qualified_name)
         self.page_limit: int = commands_per_page
         self.in_bulk_help: bool = in_bulk_help
         self.embeds: EmbedFactory = embed_factory
@@ -183,7 +180,7 @@ class HelpMenuGroup(MenuPage):
 
         return emb
 
-    def get_command_frame(self, start: int) -> Optional[List[AryaCommand]]:
+    def get_command_frame(self, start: int) -> Optional[List[Command]]:
         if start < len(self.commands):
             end = start + self.page_limit
             if end >= len(self.commands):
@@ -194,16 +191,18 @@ class HelpMenuGroup(MenuPage):
 
 
 class HelpMenuCog(MenuPage):
+    index: int
+
     def __init__(
             self,
-            cog: AryaCog,
-            commands: List[Union[AryaCommand, AryaGroup]],
+            cog: Cog,
+            commands: List[Union[Command, Group, None]],
             commands_per_page: int,
             embed_factory: EmbedFactory,
             in_bulk_help: bool
     ):
-        self.cog: AryaCog = cog
-        self.commands: List[AryaCommand] = self.flatten(commands)
+        self.cog: Cog = cog
+        self.commands: List[Command] = self.flatten(commands)
         self.page_limit: int = commands_per_page
         self.in_bulk_help: bool = in_bulk_help
         self.embeds: EmbedFactory = embed_factory
@@ -254,7 +253,7 @@ class HelpMenuCog(MenuPage):
 
         return emb
 
-    def get_command_frame(self, start: int) -> Optional[List[AryaCommand]]:
+    def get_command_frame(self, start: int) -> Optional[List[Command]]:
         if start < len(self.commands):
             end = start + self.page_limit
             if end >= len(self.commands):
@@ -264,21 +263,23 @@ class HelpMenuCog(MenuPage):
             return self.commands
 
     @staticmethod
-    def flatten(commands: List[Union[AryaCommand, AryaGroup]]) -> List[AryaCommand]:
+    def flatten(commands: List[Union[Command, Group]]) -> List[Command]:
         res = []
         for command in commands:
-            if isinstance(command, AryaCommand):
+            if isinstance(command, Command):
                 res.append(command)
-            elif isinstance(command, AryaGroup):
+            elif isinstance(command, Group):
                 group_commands = []
                 for sub_command in command.walk_commands():
-                    if isinstance(sub_command, AryaCommand):
+                    if isinstance(sub_command, Command):
                         group_commands.append(sub_command)
                 res += sorted(group_commands, key=lambda c: c.qualified_name)
         return res
 
 
 class HelpMenuIndex(MenuPage):
+    index: int
+
     def __init__(self, factory: EmbedFactory):
         self.embeds = factory
 

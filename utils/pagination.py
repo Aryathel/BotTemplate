@@ -3,11 +3,6 @@ from typing import TypeVar, Any, Optional, Dict
 import discord
 
 MenuType = TypeVar('MenuType', bound='Menu')
-AryaInteractionType = TypeVar('AryaInteractionType', bound='AryaInteraction')
-
-
-class MenuButtons:
-    pass
 
 
 class MenuPage:
@@ -34,13 +29,13 @@ class Menu(discord.ui.View):
     def __init__(
             self,
             page: MenuPage,
-            interaction: AryaInteractionType,
+            interaction: discord.Interaction,
             row: int = 0
     ):
         super().__init__()
 
         self.pages: MenuPage = page
-        self.interaction: AryaInteractionType = interaction
+        self.interaction: discord.Interaction = interaction
         self.current_page: int = 1
         self.row: int = row
         self.message: Optional[discord.Message] = None
@@ -84,7 +79,7 @@ class Menu(discord.ui.View):
                 self.add_item(self.go_last)
                 self.add_item(self.quit)
 
-    async def show_page(self, interaction: AryaInteractionType, page_num: int) -> None:
+    async def show_page(self, interaction: discord.Interaction, page_num: int) -> None:
         page = await self.pages.get_page(page_num)
         self.current_page = page_num
 
@@ -98,7 +93,7 @@ class Menu(discord.ui.View):
             else:
                 await interaction.response.edit_message(**response, view=self)
 
-    async def show_page_safe(self, interaction: AryaInteractionType, page_num: int) -> None:
+    async def show_page_safe(self, interaction: discord.Interaction, page_num: int) -> None:
         max_pages = self.pages.get_max_pages()
         try:
             if max_pages is None:
@@ -106,9 +101,9 @@ class Menu(discord.ui.View):
             elif max_pages >= page_num >= 1:
                 await self.show_page(interaction, page_num)
         except IndexError:
-            await interaction.defer()
+            await interaction.response.defer()
 
-    async def interaction_check(self, interaction: AryaInteractionType) -> bool:
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user and interaction.user.id == self.interaction.user.id:
             return True
         await interaction.response.send_message('Sorry, you cannot control this menu!', ephemeral=True)
@@ -132,23 +127,23 @@ class Menu(discord.ui.View):
         await self.interaction.response.send_message(**response, view=self)
 
     @discord.ui.button(label='⋘', style=discord.ButtonStyle.grey)
-    async def go_first(self, interaction: AryaInteractionType, button: discord.ui.Button) -> None:
+    async def go_first(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         await self.show_page(interaction, 1)
 
     @discord.ui.button(label='Back', style=discord.ButtonStyle.blurple)
-    async def go_back(self, interaction: AryaInteractionType, button: discord.ui.Button) -> None:
+    async def go_back(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         await self.show_page_safe(interaction, self.current_page - 1)
 
     @discord.ui.button(label='Next', style=discord.ButtonStyle.blurple)
-    async def go_next(self, interaction: AryaInteractionType, button: discord.ui.Button) -> None:
+    async def go_next(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         await self.show_page_safe(interaction, self.current_page + 1)
 
     @discord.ui.button(label='⋙', style=discord.ButtonStyle.grey)
-    async def go_last(self, interaction: AryaInteractionType, button: discord.ui.Button) -> None:
+    async def go_last(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         await self.show_page(interaction, self.pages.get_max_pages())
 
     @discord.ui.button(label='Quit', style=discord.ButtonStyle.red)
-    async def quit(self, interaction: AryaInteractionType, button: discord.ui.button) -> None:
+    async def quit(self, interaction: discord.Interaction, button: discord.ui.button) -> None:
         await interaction.response.defer()
         await interaction.delete_original_message()
         self.stop()

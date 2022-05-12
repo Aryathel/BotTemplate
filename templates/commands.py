@@ -12,15 +12,16 @@ GroupT = TypeVar('GroupT', bound='Binding')
 Coro = Coroutine[Any, Any, T]
 Binding = Union['Group', 'Cog']
 CommandCallback = Callable[..., Coro[T]]
-AryaCommandType = TypeVar('AryaCommandType', bound='AryaCommand')
-AryaGroupType = TypeVar('AryaGroupType', bound='AryaGroup')
+CommandType = TypeVar('CommandType', bound='Command')
+GroupType = TypeVar('GroupType', bound='Group')
+Check = Callable[['Interaction'], Union[bool, Coro[bool]]]
 
 
-class AryaGroup(app_commands.Group):
+class Group(app_commands.Group):
     icon: str = None
     help: str = None
     desc: str = None
-    commands: List[Union[AryaCommandType, AryaGroupType]]
+    commands: List[Union[CommandType, GroupType]]
 
     def __init__(
             self,
@@ -49,11 +50,11 @@ class AryaGroup(app_commands.Group):
     def _copy_with(
             self,
             *,
-            parent: Optional[AryaGroupType],
+            parent: Optional[GroupType],
             binding: Binding,
-            bindings: MutableMapping[AryaGroupType, AryaGroupType] = MISSING,
+            bindings: MutableMapping[GroupType, GroupType] = MISSING,
             set_on_binding: bool = True,
-    ) -> AryaGroupType:
+    ) -> GroupType:
         bindings = {} if bindings is MISSING else bindings
 
         cls = self.__class__
@@ -129,7 +130,7 @@ class AryaGroup(app_commands.Group):
             else:
                 desc = description
 
-            command = AryaCommand(
+            command = Command(
                 name=name if name is not MISSING else func.__name__,
                 description=desc,
                 callback=func,
@@ -143,10 +144,11 @@ class AryaGroup(app_commands.Group):
         return decorator
 
 
-class AryaCommand(app_commands.Command):
+class Command(app_commands.Command):
     icon: str = None
     help: str = None
     desc: str = None
+    checks: List[Check]
 
     def __init__(
             self,
@@ -173,13 +175,13 @@ class AryaCommand(app_commands.Command):
             return self.desc
 
     def _copy_with(
-        self,
-        *,
-        parent: Optional[AryaGroup],
-        binding: GroupT,
-        bindings: MutableMapping[GroupT, GroupT] = MISSING,
-        set_on_binding: bool = True,
-    ) -> AryaCommandType:
+            self,
+            *,
+            parent: Optional[Group],
+            binding: GroupT,
+            bindings: MutableMapping[GroupT, GroupT] = MISSING,
+            set_on_binding: bool = True,
+    ) -> CommandType:
         bindings = {} if bindings is MISSING else bindings
 
         cls = self.__class__
@@ -206,52 +208,3 @@ class AryaCommand(app_commands.Command):
             setattr(copy.binding, copy._attr, copy)
 
         return copy
-
-
-def aryacommand(
-        *,
-        name: str = MISSING,
-        description: str = MISSING,
-        help: str = MISSING,
-        icon: str = MISSING
-) -> Callable[[CommandCallback], AryaCommand]:
-    """Creates an application command from a regular function.
-
-    Parameters
-    ------------
-    name: :class:`str`
-        The name of the application command. If not given, it defaults to a lower-case
-        version of the callback name.
-    description: :class:`str`
-        The description of the application command. This shows up in the UI to describe
-        the application command. If not given, it defaults to the first line of the docstring
-        of the callback shortened to 100 characters.
-    help: :class:`str`
-        Extra information to include in the description when information is requested in a
-        help command.
-    icon: :class:`str`
-        An emoji to include in certain views showing information about the command.
-    """
-
-    def decorator(func: CommandCallback) -> AryaCommand:
-        if not inspect.iscoroutinefunction(func):
-            raise TypeError('command function must be a coroutine function')
-
-        if description is MISSING:
-            if func.__doc__ is None:
-                desc = '…'
-            else:
-                desc = shorten(func.__doc__)
-        else:
-            desc = description
-
-        return AryaCommand(
-            name=name if name is not MISSING else func.__name__,
-            description=desc,
-            callback=func,
-            parent=None,
-            help=help,
-            icon=icon
-        )
-
-    return decorator

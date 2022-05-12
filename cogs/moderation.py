@@ -1,19 +1,17 @@
 from datetime import timedelta
-from typing import Union, List
+from typing import Union, List, cast
 
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
-from custom_types import TimeDuration, TimeDurationTransformer, Permission, PermissionTransformer, ColorTransformer
-from templates import AryaBot, AryaCog, AryaInteraction, aryacommand, AryaGroup
+from templates import Bot, Cog, Interaction, Group, Permission
+from templates import decorators, transformers
 from utils import LogType
-
-debug = AryaBot.debug
 
 
 # ---------- Autocompletion functions. ----------
-async def banned_users_autocomplete(interaction: AryaInteraction,
+async def banned_users_autocomplete(interaction: Interaction,
                                     current: str) -> List[app_commands.Choice[str]]:
     opts = await interaction.client.db.bans.get_all_active_ban_users_for_guild(interaction.guild, current)
     return [
@@ -22,13 +20,13 @@ async def banned_users_autocomplete(interaction: AryaInteraction,
     ]
 
 
-class ModerationCog(AryaCog, name="moderation"):
+class ModerationCog(Cog, name="moderation"):
     name = "Moderation"
     description = "Server moderation commands."
     icon = "\N{SHIELD}"
     slash_commands = sorted(['setnick', 'bans', 'ban', 'unban', 'role'])
 
-    role = AryaGroup(
+    role = Group(
         name='role',
         description='Commands for assigning, removing, and updating roles.',
         help='These commands are meant for use by moderators, and likely will not be available to normal users.'
@@ -51,7 +49,12 @@ class ModerationCog(AryaCog, name="moderation"):
     )
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(moderate_members=True)
-    async def role_give_command(self, interaction: AryaInteraction, role: discord.Role, user: discord.Member = None):
+    async def role_give_command(
+            self,
+            interaction: Interaction,
+            role: discord.Role,
+            user: discord.Member = None
+    ) -> None:
         if not user:
             user = interaction.user
 
@@ -74,7 +77,12 @@ class ModerationCog(AryaCog, name="moderation"):
     )
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(moderate_members=True)
-    async def role_take_command(self, interaction: AryaInteraction, role: discord.Role, user: discord.Member = None):
+    async def role_take_command(
+            self,
+            interaction: Interaction,
+            role: discord.Role,
+            user: discord.Member = None
+    ) -> None:
         if not user:
             user = interaction.user
 
@@ -103,8 +111,12 @@ class ModerationCog(AryaCog, name="moderation"):
     ])
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(administrator=True)
-    async def role_bulkgive_command(self, interaction: AryaInteraction, role: discord.Role,
-                                    bulk_type: app_commands.Choice[int]):
+    async def role_bulkgive_command(
+            self,
+            interaction: Interaction,
+            role: discord.Role,
+            bulk_type: app_commands.Choice[int]
+    ) -> None:
         count_success = 0
         count_fail = 0
         type_str = None
@@ -155,8 +167,12 @@ class ModerationCog(AryaCog, name="moderation"):
     ])
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(administrator=True)
-    async def role_bulktake_command(self, interaction: AryaInteraction, role: discord.Role,
-                                    bulk_type: app_commands.Choice[int]):
+    async def role_bulktake_command(
+            self,
+            interaction: Interaction,
+            role: discord.Role,
+            bulk_type: app_commands.Choice[int]
+    ) -> None:
         count_success = 0
         count_fail = 0
         type_str = None
@@ -204,13 +220,13 @@ class ModerationCog(AryaCog, name="moderation"):
     @app_commands.checks.bot_has_permissions(manage_roles=True)
     async def role_permissions_command(
             self,
-            interaction: AryaInteraction,
+            interaction: Interaction,
             role: discord.Role,
-            permission: app_commands.Transform[Permission, PermissionTransformer],
+            permission: app_commands.Transform[Permission, transformers.PermissionTransformer],
             value: bool = None
-    ):
-        perms: List[str] = permission.permissions
-
+    ) -> None:
+        permission = cast(Permission, permission)
+        perms = permission.permissions
         cur = role.permissions
 
         updated = {}
@@ -252,8 +268,13 @@ class ModerationCog(AryaCog, name="moderation"):
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_roles=True)
     @app_commands.checks.bot_has_permissions(manage_roles=True)
-    async def role_color_command(self, interaction: AryaInteraction, role: discord.Role, color: app_commands.Transform[discord.Color, ColorTransformer]):
-        color: discord.Color = color
+    async def role_color_command(
+            self,
+            interaction: Interaction,
+            role: discord.Role,
+            color: app_commands.Transform[discord.Color, transformers.ColorTransformer]
+    ) -> None:
+        color = cast(discord.Color, color)
         if color == role.color:
             await interaction.response.send_message(
                 f'`{color}` is already the color for the {role.mention} role.',
@@ -262,7 +283,7 @@ class ModerationCog(AryaCog, name="moderation"):
         await role.edit(color=color)
         await interaction.response.send_message(f'Updated color for {role.mention} to `{color}`.')
 
-    @aryacommand(
+    @decorators.command(
         name="setnick",
         description="Sets the nickname of a user in the server."
     )
@@ -272,8 +293,12 @@ class ModerationCog(AryaCog, name="moderation"):
     )
     @app_commands.guild_only()
     @app_commands.checks.bot_has_permissions(manage_nicknames=True)
-    async def setnick_command(self, interaction: AryaInteraction, user: discord.Member = None,
-                              nickname: str = None) -> None:
+    async def setnick_command(
+            self,
+            interaction: Interaction,
+            user: discord.Member = None,
+            nickname: str = None
+    ) -> None:
         if not user:
             user = interaction.user
 
@@ -304,7 +329,7 @@ class ModerationCog(AryaCog, name="moderation"):
         )
         await interaction.response.send_message(embed=emb)
 
-    @aryacommand(name='ban', description='Bans a user from the server.')
+    @decorators.command(name='ban', description='Bans a user from the server.')
     @app_commands.describe(
         user='The user to ban.',
         duration='The length of time to ban the user, something like "2d12h", but accepts a variety of inputs.'
@@ -314,16 +339,16 @@ class ModerationCog(AryaCog, name="moderation"):
     @app_commands.checks.has_permissions(ban_members=True)
     async def ban_command(
             self,
-            interaction: AryaInteraction,
+            interaction: Interaction,
             user: discord.Member,
-            duration: app_commands.Transform[TimeDuration, TimeDurationTransformer] = None,
+            duration: app_commands.Transform[timedelta, transformers.TimeDurationTransformer] = None,
             reason: str = None
-    ):
+    ) -> None:
         # Modal ban form for future use with context_menus as well.
         # await interaction.response.send_modal(BanForm(user=user, bot=self.bot))
 
         if duration is not None:
-            duration: timedelta = duration.duration
+            duration = cast(timedelta, duration)
 
         await user.ban(reason=reason)
 
@@ -355,7 +380,7 @@ class ModerationCog(AryaCog, name="moderation"):
         )
         await interaction.response.send_message(embed=emb, ephemeral=True)
 
-    @aryacommand(
+    @decorators.command(
         name='bans',
         description='Gets a list of bans.'
     )
@@ -363,7 +388,7 @@ class ModerationCog(AryaCog, name="moderation"):
     @app_commands.guild_only()
     @app_commands.checks.bot_has_permissions(ban_members=True)
     @app_commands.checks.has_permissions(ban_members=True)
-    async def ban_list_command(self, interaction: AryaInteraction, user: discord.User = None):
+    async def ban_list_command(self, interaction: Interaction, user: discord.User = None) -> None:
         if not user:
             bans = await self.bot.db.bans.get_all_active_for_guild(interaction.guild)
 
@@ -425,19 +450,22 @@ class ModerationCog(AryaCog, name="moderation"):
 
             await interaction.response.send_message(embed=emb)
 
-    @aryacommand(name='unban', description='Unbans a banned user.')
+    @decorators.command(name='unban', description='Unbans a banned user.')
     @app_commands.describe(user='The user to unban.', reason='The reason for unbanning a user.')
     @app_commands.guild_only()
     @app_commands.checks.bot_has_permissions(ban_members=True)
     @app_commands.checks.has_permissions(ban_members=True)
     @app_commands.autocomplete(user=banned_users_autocomplete)
-    async def unban_command(self, interaction: AryaInteraction, user: str, reason: str = None):
+    async def unban_command(self, interaction: Interaction, user: str, reason: str = None) -> None:
         ban = await self.bot.db.bans.get_active_for_username_in_guild(user, interaction.guild)
         if ban:
             user = await self.bot.fetch_user(ban.user_id)
             if user:
                 try:
-                    await interaction.guild.unban(user, reason=f'{interaction.user} requested the unban of {user}.')
+                    await interaction.guild.unban(
+                        user,
+                        reason=f'{interaction.user} requested the unban of {user}: {reason}.'
+                    )
                     await interaction.response.send_message(f'Unbanned {user.mention}.', ephemeral=True)
 
                 except discord.NotFound:
@@ -458,7 +486,7 @@ class ModerationCog(AryaCog, name="moderation"):
 
     # ---------- App Command Error Handlers ------------
     @setnick_command.error
-    async def setnick_error(self, interaction: AryaInteraction, error: app_commands.AppCommandError) -> None:
+    async def setnick_error(self, interaction: Interaction, error: app_commands.AppCommandError) -> None:
         if isinstance(error, app_commands.CommandInvokeError):
             error = error.original
 
@@ -470,7 +498,7 @@ class ModerationCog(AryaCog, name="moderation"):
             interaction.extras['handled'] = True
 
     @ban_command.error
-    async def ban_error(self, interaction: AryaInteraction, error: app_commands.AppCommandError) -> None:
+    async def ban_error(self, interaction: Interaction, error: app_commands.AppCommandError) -> None:
         if isinstance(error, app_commands.CommandInvokeError):
             error = error.original
 
@@ -536,5 +564,5 @@ class ModerationCog(AryaCog, name="moderation"):
         await self.bot.wait_until_ready()
 
 
-async def setup(bot: AryaBot):
+async def setup(bot: Bot):
     await bot.add_cog(ModerationCog(bot), guilds=[bot.GUILD])

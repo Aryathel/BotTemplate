@@ -1,9 +1,19 @@
 import datetime
-from typing import Optional, Union, Any
+from typing import Optional, Union, Any, TypedDict
 
 import discord
 
-from custom_types import EmbedField
+
+class EmbedField(TypedDict):
+    """Represents the typing for an embed field.
+
+    This is not the same as a standard Discord embed field structure, it is used for typing in the
+    `utils.embeds.EmbedFactory` module for customizing visuals of an embed field.
+    """
+    name: str
+    value: str
+    inline: Optional[bool]
+    value_line: Optional[bool]
 
 
 class EmbedFactory:
@@ -11,13 +21,16 @@ class EmbedFactory:
     that can have any amount of detail filled in as default values
     if they are not given to the embed creation message.
     """
-    def __init__(self, color: Optional[Union[int, discord.Color]] = None,
+    def __init__(
+            self,
+            color: Optional[Union[int, discord.Color]] = None,
             title: Optional[Any] = None, url: Optional[Any] = None,
             description: Optional[Any] = None, timestamp: Optional[datetime.datetime] = None,
             author_name: Optional[Any] = None, author_url: Optional[Any] = None,
             author_icon_url: Optional[Any] = None, footer: Optional[Any] = None,
             footer_icon: Optional[Any] = None, image: Optional[Any] = None,
-            thumbnail: Optional[Any] = None, fields: list[EmbedField] = None):
+            thumbnail: Optional[Any] = None, fields: list[EmbedField] = None
+    ):
         self.color = color
         self.title = title
         self.url = url

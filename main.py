@@ -1,7 +1,7 @@
 import os
 import discord
 
-from templates import AryaBot, AryaCommandTree
+from templates import Bot
 from utils import EmbedFactory
 
 if __name__ == "__main__":
@@ -9,7 +9,7 @@ if __name__ == "__main__":
         color=discord.Colour.from_str(os.getenv('BOT_COLOR'))
     )
 
-    bot = AryaBot(
+    bot = Bot(
         command_prefix='!',
         description="This is Arya's template Discord.py v2.0 bot!",
         token=os.getenv('BOT_TOKEN'),
@@ -20,7 +20,6 @@ if __name__ == "__main__":
         db_name=os.getenv('POSTGRES_DB_NAME'),
         db_user=os.getenv('POSTGRES_DB_USER'),
         db_pass=os.getenv('POSTGRES_DB_PASS'),
-        tree_cls=AryaCommandTree,
         embed_factory=emb_fac
     )
     bot.run()
