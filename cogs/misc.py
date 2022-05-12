@@ -5,36 +5,50 @@ from discord import app_commands
 from discord.ext import commands
 
 from custom_types import EmojiTransform, Emoji
-from main import AryaBot
-from templates.checks import is_arya
-from utils.general import get_emoji_name
+from templates import AryaBot, AryaCog, AryaInteraction, aryacommand
+from utils import get_emoji_name
 
 
-class GeneralCog(commands.Cog, name="general"):
-    def __init__(self, bot: AryaBot) -> None:
-        self.bot: AryaBot = bot
+class MiscCog(AryaCog, name="miscellaneous"):
+    name = "Miscellaneous"
+    description = "Commands without a category."
+    icon = "\N{GAME DIE}"
+    slash_commands = sorted(['ping', 'flip', 'roll', 'urlshort', 'avatar', 'user', 'server', 'emoji'])
+    help = "This commands can be just about anything, they just didn't really fit in anywhere else."
 
-    @app_commands.command(name="ping",
-                          description="\N{Table Tennis Paddle and Ball} A simple check to see how well the bot is communicating with discord.")
-    async def ping_command(self, interaction: discord.Interaction) -> None:
+    # ---------- App Commands ----------
+    @aryacommand(
+        name="ping",
+        description="Get response time for a discord message.",
+        icon="\N{Table Tennis Paddle and Ball}",
+        help="Uses the internal `latency` checker to determine how long it takes for an API request to be acknowledged."
+    )
+    async def ping_command(self, interaction: AryaInteraction) -> None:
         emb = self.bot.embeds.get(
             title='\N{Table Tennis Paddle and Ball} Pong!',
             description=f'The bot latency is `{round(self.bot.latency * 1000)} ms`.'
         )
         await interaction.response.send_message(embed=emb, ephemeral=True)
 
-    @app_commands.command(name="flip", description="Flips a coin to get heads or tails.")
-    async def flip_command(self, interaction: discord.Interaction) -> None:
+    @aryacommand(
+        name="flip",
+        description="Flips a coin to get heads or tails."
+    )
+    async def flip_command(self, interaction: AryaInteraction) -> None:
         val = random.choice([1, 2])
         emb = self.bot.embeds.get(
             title='Heads!' if val == 1 else 'Tails!'
         )
         await interaction.response.send_message(embed=emb)
 
-    @app_commands.command(name="roll", description="1\N{VARIATION SELECTOR-16}\N{COMBINING ENCLOSING KEYCAP} Pick a random number between two values.")
+    @aryacommand(
+        name="roll",
+        description="Pick a random number between two values.",
+        icon="\N{GAME DIE}"
+    )
     @app_commands.rename(min_val='min', max_val='max')
     @app_commands.describe(min_val='The minimum possible value.', max_val='The maximum possible value.')
-    async def roll_command(self, interaction: discord.Interaction, min_val: int = 0, max_val: int = 100):
+    async def roll_command(self, interaction: AryaInteraction, min_val: int = 0, max_val: int = 100) -> None:
         val = random.randint(min_val, max_val)
         emb = self.bot.embeds.get(
             title=f'Roll {min_val}-{max_val}',
@@ -42,9 +56,14 @@ class GeneralCog(commands.Cog, name="general"):
         )
         await interaction.response.send_message(embed=emb)
 
-    @app_commands.command(name='urlshort', description='Shortens a given URL.')
+    @aryacommand(
+        name='urlshort',
+        description='Shortens a given URL.',
+        icon='\N{LEFTWARDS ARROW WITH HOOK}',
+        help='Uses [TinyUrl](https://tinyurl.com/app) to shorten a given url.'
+    )
     @app_commands.describe(url='The URL to shorten.')
-    async def urlshort_command(self, interaction: discord.Interaction, url: str):
+    async def urlshort_command(self, interaction: AryaInteraction, url: str) -> None:
         short = self.bot.url_shorter.tinyurl.short(url)
 
         emb = self.bot.embeds.get(
@@ -53,9 +72,13 @@ class GeneralCog(commands.Cog, name="general"):
         )
         await interaction.response.send_message(embed=emb, ephemeral=True)
 
-    @app_commands.command(name='avatar', description='\N{Frame with Picture} Gets a user\'s avatar image.')
+    @aryacommand(
+        name='avatar',
+        description='Gets a user\'s avatar image.',
+        icon='\N{FRAME WITH PICTURE}'
+    )
     @app_commands.describe(user='The user to get the avatar of, or leave blank for yourself.')
-    async def avatar_command(self, interaction: discord.Interaction, user: discord.User = None):
+    async def avatar_command(self, interaction: AryaInteraction, user: discord.User = None) -> None:
         if not user:
             user = interaction.user
 
@@ -69,9 +92,13 @@ class GeneralCog(commands.Cog, name="general"):
         )
         await interaction.response.send_message(embed=emb)
 
-    @app_commands.command(name='user', description='\N{Adult} Gets information about you or another user.')
+    @aryacommand(
+        name='user',
+        description='Gets information about you or another user.',
+        icon='\N{Adult}'
+    )
     @app_commands.describe(user='The user to get information about, or leave blank for yourself.')
-    async def user_command(self, interaction: discord.Interaction, user: discord.Member = None):
+    async def user_command(self, interaction: AryaInteraction, user: discord.Member = None) -> None:
         if not user:
             user = interaction.user
 
@@ -79,12 +106,12 @@ class GeneralCog(commands.Cog, name="general"):
             fields=[
                 {
                     "name": "Created Account",
-                    "value": '└' + discord.utils.format_dt(user.created_at, style='R'),
+                    "value": discord.utils.format_dt(user.created_at, style='R'),
                     "inline": True
                 },
                 {
                     "name": "Joined Server",
-                    "value": '└' + discord.utils.format_dt(user.joined_at, style='R'),
+                    "value": discord.utils.format_dt(user.joined_at, style='R'),
                     "inline": True
                 }
             ],
@@ -94,9 +121,13 @@ class GeneralCog(commands.Cog, name="general"):
         )
         await interaction.response.send_message(embed=emb)
 
-    @app_commands.command(name='server', description='\N{File Cabinet} Shows general information about the server.')
+    @aryacommand(
+        name='server',
+        description='Shows general information about the server.',
+        icon='\N{File Cabinet}'
+    )
     @app_commands.guild_only()
-    async def server_command(self, interaction: discord.Interaction):
+    async def server_command(self, interaction: AryaInteraction) -> None:
         guild = interaction.guild
         emb = self.bot.embeds.get(
             title=guild.name,
@@ -136,10 +167,14 @@ class GeneralCog(commands.Cog, name="general"):
         )
         await interaction.response.send_message(embed=emb)
 
-    @app_commands.command(name='emoji', description='Get information about an emoji.')
+    @aryacommand(
+        name='emoji',
+        description='Get information about an emoji.',
+        icon='\N{THUMBS UP SIGN}'
+    )
     @app_commands.describe(emoji='An emoji to get information about.')
-    async def emoji_command(self, interaction: discord.Interaction,
-                            emoji: app_commands.Transform[Emoji, EmojiTransform]):
+    async def emoji_command(self, interaction: AryaInteraction,
+                            emoji: app_commands.Transform[Emoji, EmojiTransform]) -> None:
         emoji: Emoji
         if emoji.is_known:
             try:
@@ -210,23 +245,6 @@ class GeneralCog(commands.Cog, name="general"):
 
         await interaction.response.send_message(embed=emb)
 
-    @app_commands.command(name='sync',
-                          description='\N{Envelope with Downwards Arrow Above} Syncs the slash commands to Discord.')
-    @is_arya()
-    async def sync_commands(self, interaction: discord.Interaction):
-        await interaction.response.send_message('Commands syncing...', ephemeral=True)
-        await self.bot.tree.sync(guild=self.bot.GUILD)
-        print('> Synced commands to discord.')
-
-    @sync_commands.error
-    async def sync_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
-        if isinstance(error, app_commands.CommandInvokeError):
-            error = error.original
-        if isinstance(error, app_commands.CheckFailure):
-            await interaction.response.send_message(
-                'You need to be my creator to do that, and you are not. Sorry ¯\\_(ツ)_/¯', ephemeral=True)
-            interaction.extras['handled'] = True
-
 
 async def setup(bot: AryaBot) -> None:
-    await bot.add_cog(GeneralCog(bot), guilds=[bot.GUILD])
+    await bot.add_cog(MiscCog(bot), guilds=[bot.GUILD])

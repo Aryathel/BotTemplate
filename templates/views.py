@@ -1,11 +1,58 @@
+from typing import Optional, Union, List
+
 import discord
-from discord import app_commands
 
-from utils.general import tdelta_from_str
-from utils.embeds import EmbedFactory
+from templates import AryaInteraction, AryaBot, AryaCog
+from utils import tdelta_from_str
 
+debug = AryaBot.debug
+
+
+# ---------- Help Command ----------
+class ModuleSelect(discord.ui.Select):
+    def __init__(self, cogs: List[AryaCog]):
+        options = [
+            discord.SelectOption(
+                label="Index",
+                description="The help index that shows how to use me.",
+                emoji="\N{EXCLAMATION QUESTION MARK}",
+                value="help"
+            )
+        ]
+        options += [
+            discord.SelectOption(
+                label=cog.name,
+                emoji=cog.icon,
+                description=cog.description,
+                value=cog.qualified_name
+            )
+            for cog in cogs
+        ]
+
+        super().__init__(
+            placeholder='Select a category...',
+            options=options
+        )
+
+    async def callback(self, interaction: AryaInteraction):
+        await interaction.response.defer()
+        debug(f'"{self.values}" selected.')
+
+
+class Paginator(discord.ui.View):
+    def __init__(self, cogs):
+        super().__init__()
+
+        self.add_item(ModuleSelect(cogs))
+
+
+# ---------- Ban Form ----------
 
 class BanForm(discord.ui.Modal):
+    """ A modal form that appears when banning a user via context menu.
+
+    This is an alternative to the `/ban` command, and may or may not be implemented.
+    """
     def __init__(self, user: discord.Member, bot):
         self.user = user
         self.bot = bot
