@@ -183,8 +183,6 @@ class HelpMenuGroup(MenuPage):
     def get_command_frame(self, start: int) -> Optional[List[Command]]:
         if start < len(self.commands):
             end = start + self.page_limit
-            if end >= len(self.commands):
-                end = len(self.commands)
             return self.commands[start:end]
         else:
             return self.commands
@@ -256,8 +254,6 @@ class HelpMenuCog(MenuPage):
     def get_command_frame(self, start: int) -> Optional[List[Command]]:
         if start < len(self.commands):
             end = start + self.page_limit
-            if end >= len(self.commands):
-                end = len(self.commands)
             return self.commands[start:end]
         else:
             return self.commands
@@ -311,7 +307,7 @@ class HelpMenuIndex(MenuPage):
                              "I am currently in development, but I server as a platform for all of Arya's creations on Discord. "
                              "In the past, the older versions of me have been used for programs in over 100 different servers and projects, "
                              "ranging from smaller community server for friends, to collegiate esports servers, to larger discords like "
-                             "[Cooler Master](https://www.coolermaster.com/), [MSI](https://us.msi.com/), and [Space Productions](https://www.spaceproductions.org/)."
+                             "[Cooler Master](https://www.coolermaster.com/), [MSI](https://us.msi.com/), and [SpaceTime Strategies](https://www.spacetime.gg/)."
                              f" I was originally created on {created}.\n\n"
                              "Oh, and I am also open source!\nYou can find my code and use me as a bot template on [GitHub](https://github.com/Aryathel/BotTemplate).",
                     "inline": False

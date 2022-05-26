@@ -1,18 +1,37 @@
+"""
+TODO:
+    Command Implementations:
+        - Warns:
+            - Warn member
+            - View member warnings
+            - Set warning limit before ban
+        - Massban (?) [Takes a series of optional arguments to ban users by. I don't see a need for this rn.]
+        - Clean (?) [Removes messages from the bot by count and location.]
+        - Remove (?) [Removes messages meeting a certain criteria.]
+    Listener Implementations:
+        - Raid protection (?) [Need to look into a clean way of doing this.]
+        - Spam (?) [Same as above for this. Setting rules by @mentions or regular messages seems reasonable.]
+"""
+
 from datetime import timedelta
-from typing import Union, List, cast
+from typing import Union, List, cast, Optional
 
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
-from templates import Bot, Cog, Interaction, Group, Permission
+from templates import Bot, Cog, Interaction
 from templates import decorators, transformers
-from utils import LogType
+from utils import LogType, clamp, Menu, MenuPageList
+
+from .groups.role import Role
 
 
 # ---------- Autocompletion functions. ----------
-async def banned_users_autocomplete(interaction: Interaction,
-                                    current: str) -> List[app_commands.Choice[str]]:
+async def banned_users_autocomplete(
+        interaction: Interaction,
+        current: str
+) -> List[app_commands.Choice[str]]:
     opts = await interaction.client.db.bans.get_all_active_ban_users_for_guild(interaction.guild, current)
     return [
         app_commands.Choice(name=opt.user_name, value=opt.user_name)
@@ -24,264 +43,45 @@ class ModerationCog(Cog, name="moderation"):
     name = "Moderation"
     description = "Server moderation commands."
     icon = "\N{SHIELD}"
-    slash_commands = sorted(['setnick', 'bans', 'ban', 'unban', 'role'])
 
-    role = Group(
-        name='role',
-        description='Commands for assigning, removing, and updating roles.',
-        help='These commands are meant for use by moderators, and likely will not be available to normal users.'
-    )
+    role: Role
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        self.role = Role(bot=self.bot)
+        self.slash_commands = ['setnick', 'bans', 'ban', 'unban', self.role]
+
         self.moderation_task.start()
 
+    def cog_unload(self) -> None:
+        super().cog_unload()
+
+        self.moderation_task.stop()
+
     # ---------- App Commands ----------
-    @role.command(
-        name='give',
-        description='Gives a role to a user.',
-        icon='\N{HEAVY PLUS SIGN}'
+    @decorators.command(
+        name='newmembers',
+        description='Get\'s the newest members who have joined the server.',
+        help='The number of members returned must be between 5 and 25, inclusive.'
     )
-    @app_commands.describe(
-        role='The role to assign to the user.',
-        user='The user to give the role to. Leave blank for yourself.'
-    )
+    @app_commands.describe(count='The number of users to fetch, no more than 25.')
     @app_commands.guild_only()
-    @app_commands.checks.has_permissions(moderate_members=True)
-    async def role_give_command(
-            self,
-            interaction: Interaction,
-            role: discord.Role,
-            user: discord.Member = None
-    ) -> None:
-        if not user:
-            user = interaction.user
+    async def newmembers_command(self, interaction: Interaction, count: int = 5) -> None:
+        count = clamp(count, 5, 25)
 
-        if role in user.roles:
-            await interaction.response.send_message(f'{user.mention} already has the {role.mention} role.',
-                                                    ephemeral=True)
-            return
+        members = sorted(
+            interaction.guild.members,
+            key=lambda m: m.joined_at or interaction.guild.created_at,
+            reverse=True
+        )[:count]
 
-        await user.add_roles(role)
-        await interaction.response.send_message(f'Gave {role.mention} to {user.mention}.')
+        emb = self.bot.embeds.get(
+            title=f'{len(members)} Newest Members',
+            description='\n'.join([f'{i+1}: {m.mention}' for i, m in enumerate(members)])
+        )
 
-    @role.command(
-        name='take',
-        description='Takes a role from a user.',
-        icon='\N{HEAVY MINUS SIGN}'
-    )
-    @app_commands.describe(
-        role='The role to take from the user.',
-        user='The user to take the role from. Leave blank for yourself.'
-    )
-    @app_commands.guild_only()
-    @app_commands.checks.has_permissions(moderate_members=True)
-    async def role_take_command(
-            self,
-            interaction: Interaction,
-            role: discord.Role,
-            user: discord.Member = None
-    ) -> None:
-        if not user:
-            user = interaction.user
-
-        if role not in user.roles:
-            await interaction.response.send_message(f'{user.mention} does not have the {role.mention} role.',
-                                                    ephemeral=True)
-            return
-
-        await user.remove_roles(role)
-        await interaction.response.send_message(f'Took {role.mention} from {user.mention}.')
-
-    @role.command(
-        name='bulkgive',
-        description='Gives a role to multiple users at once.',
-        icon='\N{HEAVY PLUS SIGN}'
-    )
-    @app_commands.describe(
-        role='The role to give to the selected group.',
-        bulk_type='The type of users to give the role to.'
-    )
-    @app_commands.rename(bulk_type='type')
-    @app_commands.choices(bulk_type=[
-        app_commands.Choice(name='All Users', value=1),
-        app_commands.Choice(name='Bots', value=2),
-        app_commands.Choice(name='Humans', value=3)
-    ])
-    @app_commands.guild_only()
-    @app_commands.checks.has_permissions(administrator=True)
-    async def role_bulkgive_command(
-            self,
-            interaction: Interaction,
-            role: discord.Role,
-            bulk_type: app_commands.Choice[int]
-    ) -> None:
-        count_success = 0
-        count_fail = 0
-        type_str = None
-        if bulk_type.value == 1:
-            type_str = 'users'
-            for member in interaction.guild.members:
-                try:
-                    await member.add_roles(role)
-                    count_success += 1
-                except discord.Forbidden:
-                    count_fail += 1
-        elif bulk_type.value == 2:
-            type_str = 'bots'
-            for member in interaction.guild.members:
-                if member.bot:
-                    try:
-                        await member.add_roles(role)
-                        count_success += 1
-                    except discord.Forbidden:
-                        count_fail += 1
-        elif bulk_type.value == 3:
-            type_str = 'humans'
-            for member in interaction.guild.members:
-                if not member.bot:
-                    try:
-                        await member.add_roles(role)
-                        count_success += 1
-                    except discord.Forbidden:
-                        count_fail += 1
-
-        await interaction.response.send_message(
-            f'Gave {role.mention} to {count_success} {type_str}.{"" if count_fail == 0 else f" Failed to give the role to {count_fail} users."}')
-
-    @role.command(
-        name='bulktake',
-        description='Takes a role to multiple users at once.',
-        icon='\N{HEAVY MINUS SIGN}'
-    )
-    @app_commands.describe(
-        role='The role to take from the selected group.',
-        bulk_type='The type of users to take the role from.'
-    )
-    @app_commands.rename(bulk_type='type')
-    @app_commands.choices(bulk_type=[
-        app_commands.Choice(name='All Users', value=1),
-        app_commands.Choice(name='Bots', value=2),
-        app_commands.Choice(name='Humans', value=3)
-    ])
-    @app_commands.guild_only()
-    @app_commands.checks.has_permissions(administrator=True)
-    async def role_bulktake_command(
-            self,
-            interaction: Interaction,
-            role: discord.Role,
-            bulk_type: app_commands.Choice[int]
-    ) -> None:
-        count_success = 0
-        count_fail = 0
-        type_str = None
-        if bulk_type.value == 1:
-            type_str = 'users'
-            for member in interaction.guild.members:
-                try:
-                    await member.remove_roles(role)
-                    count_success += 1
-                except discord.Forbidden:
-                    count_fail += 1
-        elif bulk_type.value == 2:
-            type_str = 'bots'
-            for member in interaction.guild.members:
-                if member.bot:
-                    try:
-                        await member.remove_roles(role)
-                        count_success += 1
-                    except discord.Forbidden:
-                        count_fail += 1
-        elif bulk_type.value == 3:
-            type_str = 'humans'
-            for member in interaction.guild.members:
-                if not member.bot:
-                    try:
-                        await member.remove_roles(role)
-                        count_success += 1
-                    except discord.Forbidden:
-                        count_fail += 1
-
-        await interaction.response.send_message(
-            f'Took {role.mention} from {count_success} {type_str}.{"" if count_fail == 0 else f" Failed to take the role from {count_fail} users."}')
-
-    @role.command(
-        name='permissions',
-        description='Allows changing a specific permission for a certain role.'
-    )
-    @app_commands.describe(
-        role='The role to change the permissions for.',
-        permission='The permission to update for the role.',
-        value='The value to set the permission to for the role.'
-    )
-    @app_commands.guild_only()
-    @app_commands.checks.has_permissions(manage_roles=True)
-    @app_commands.checks.bot_has_permissions(manage_roles=True)
-    async def role_permissions_command(
-            self,
-            interaction: Interaction,
-            role: discord.Role,
-            permission: app_commands.Transform[Permission, transformers.PermissionTransformer],
-            value: bool = None
-    ) -> None:
-        permission = cast(Permission, permission)
-        perms = permission.permissions
-        cur = role.permissions
-
-        updated = {}
-        for flag in perms:
-            if not getattr(cur, flag) == value:
-                setattr(cur, flag, value)
-                updated[flag] = value
-
-        if len(updated) > 0:
-            await role.edit(permissions=cur)
-
-            emb = self.bot.embeds.get(
-                title='Role Permissions Updated',
-                description=f'Updated permissions to `{value}` for the {role.mention} role.\n\n```\n' +
-                            '\n'.join(f'{flag}' for flag in sorted(list(updated.keys()))) + '```',
-                color=role.color
-            )
-
-            await interaction.response.send_message(
-                embed=emb
-            )
-        else:
-            await interaction.response.send_message(
-                f'The {role.mention} role already has `{permission.flag}` permissions set to `{value}`.',
-                ephemeral=True
-            )
-
-    @role.command(
-        name='color',
-        description='Sets the color of a given role.',
-        icon='\N{ARTIST PALETTE}',
-        help='Accepts a range of default colors, a random color, a hex code string like `#ffffff` or `#fff`, '
-             'or an rgb value, like `123, 234, 200`.'
-    )
-    @app_commands.describe(
-        role='The role to change the color for.',
-        color='The color to change the role to.'
-    )
-    @app_commands.guild_only()
-    @app_commands.checks.has_permissions(manage_roles=True)
-    @app_commands.checks.bot_has_permissions(manage_roles=True)
-    async def role_color_command(
-            self,
-            interaction: Interaction,
-            role: discord.Role,
-            color: app_commands.Transform[discord.Color, transformers.ColorTransformer]
-    ) -> None:
-        color = cast(discord.Color, color)
-        if color == role.color:
-            await interaction.response.send_message(
-                f'`{color}` is already the color for the {role.mention} role.',
-                ephemeral=True
-            )
-        await role.edit(color=color)
-        await interaction.response.send_message(f'Updated color for {role.mention} to `{color}`.')
+        await interaction.response.send_message(embed=emb)
 
     @decorators.command(
         name="setnick",
@@ -329,10 +129,106 @@ class ModerationCog(Cog, name="moderation"):
         )
         await interaction.response.send_message(embed=emb)
 
-    @decorators.command(name='ban', description='Bans a user from the server.')
+    @decorators.command(
+        name='kick',
+        description='Kicks a user from the guild.',
+        icon='\N{WOMANS BOOTS}'
+    )
+    @app_commands.describe(
+        user='The user to kick from the server.',
+        reason='The reason for kicking the user.'
+    )
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(kick_members=True)
+    @app_commands.checks.bot_has_permissions(kick_members=True)
+    async def kick_command(self, interaction: Interaction, user: discord.Member, reason: str = None):
+        await interaction.guild.kick(user, reason=f'Moderator: "{interaction.user}"\nReason: "{reason}"')
+        self.bot.log(f'"{interaction.user}" kicked "{user}" from "{interaction.guild}"')
+        emb = self.bot.embeds.get(
+            title=f'Kicked {user}',
+            fields=[
+                {
+                    "name": "Moderator",
+                    "value": interaction.user.mention
+                },
+                {
+                    "name": "Reason",
+                    "value": reason,
+                    "inline": False
+                }
+            ],
+            thumbnail=user.display_avatar.url
+        )
+        await interaction.response.send_message(embed=emb)
+
+    @decorators.command(
+        name='mute',
+        description='Prevents a user from doing anything for a short time.',
+        icon='\N{SPEAKER WITH CANCELLATION STROKE}',
+        help='This includes prevention of sending messages, reacting to messages, joining voice channels, or joining video calls.'
+    )
+    @app_commands.describe(
+        user='The user to mute.',
+        duration='The length of time to mute the user for.',
+        reason='The reason for muting the user.'
+    )
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(moderate_members=True)
+    @app_commands.checks.bot_has_permissions(moderate_members=True)
+    async def mute_command(
+            self,
+            interaction: Interaction,
+            user: discord.Member,
+            duration: app_commands.Transform[timedelta, transformers.TimeDurationTransformer],
+            reason: str = None
+    ) -> None:
+        duration = cast(timedelta, duration)
+        await user.timeout(duration, reason=f'Moderator: "{interaction.user}"\nReason: "{reason}"')
+        emb = self.bot.embeds.get(
+            description=f'{user.mention} muted until {discord.utils.format_dt(discord.utils.utcnow() + duration, "R")}'
+        )
+        if reason is not None:
+            emb.add_field(
+                name='Reason',
+                value=reason
+            )
+        await interaction.response.send_message(embed=emb)
+
+    @decorators.command(
+        name='unmute',
+        description='Unmute a user.',
+        icon='\N{SPEAKER WITH ONE SOUND WAVE}'
+    )
+    @app_commands.describe(user='The user to unmute.', reason='The reason for unmuting the user.')
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(moderate_members=True)
+    @app_commands.checks.bot_has_permissions(moderate_members=True)
+    async def unmute_command(
+            self,
+            interaction: Interaction,
+            user: discord.Member,
+            reason: str = None
+    ) -> None:
+        if not user.is_timed_out():
+            emb = self.bot.embeds.get(description=f'{user.mention} is not currently muted.')
+            await interaction.response.send_message(embed=emb, ephemeral=True)
+            return
+
+        await user.edit(timed_out_until=None, reason=f'Moderator: "{interaction.user}"\nReason: "{reason}"')
+        emb = self.bot.embeds.get(
+            description=f'{user.mention} unmuted'
+        )
+        await interaction.response.send_message(embed=emb)
+
+    @decorators.command(
+        name='ban',
+        description='Bans a user from the server.',
+        icon='\N{NO ENTRY SIGN}'
+    )
     @app_commands.describe(
         user='The user to ban.',
-        duration='The length of time to ban the user, something like "2d12h", but accepts a variety of inputs.'
+        duration='The length of time to ban the user, something like "2d12h", but accepts a variety of inputs.',
+        reason='The reason for banning the user.'
     )
     @app_commands.guild_only()
     @app_commands.checks.bot_has_permissions(ban_members=True)
@@ -350,7 +246,7 @@ class ModerationCog(Cog, name="moderation"):
         if duration is not None:
             duration = cast(timedelta, duration)
 
-        await user.ban(reason=reason)
+        await user.ban(reason=f'Moderator: "{interaction.user}" Reason: "{reason}"')
 
         emb = self.bot.embeds.get(
             title=f'Banned {user}',
@@ -378,7 +274,105 @@ class ModerationCog(Cog, name="moderation"):
             duration=duration,
             reason=reason
         )
-        await interaction.response.send_message(embed=emb, ephemeral=True)
+        await interaction.response.send_message(embed=emb)
+
+    @decorators.command(
+        name='softban',
+        description='Softbans a user.',
+        icon='\N{NO ENTRY SIGN}',
+        help='Bans a user, deleting recent messages from them and removing them from the server, then unbans them immediately.'
+    )
+    @app_commands.describe(
+        user='The user to ban.',
+        reason='The reason for softbanning the user.'
+    )
+    @app_commands.guild_only()
+    @app_commands.checks.bot_has_permissions(ban_members=True)
+    @app_commands.checks.has_permissions(ban_members=True)
+    async def ban_command(
+            self,
+            interaction: Interaction,
+            user: discord.Member,
+            reason: str = None
+    ) -> None:
+        await user.ban(reason=f'Moderator: "{interaction.user}" Reason: "{reason}"')
+        await user.unban(reason=f'Moderator: "{interaction.user}" Reason: "{reason}"')
+
+        emb = self.bot.embeds.get(
+            title=f'Softbanned {user}',
+            thumbnail=user.display_avatar.url,
+            fields=[
+                {
+                    "name": "Reason",
+                    "value": reason,
+                    "inline": False
+                }
+            ]
+        )
+
+        await self.bot.db.bans.insert(
+            user=user,
+            guild=interaction.guild,
+            banner=interaction.user,
+            duration=None,
+            reason=reason,
+            active=False
+        )
+
+        await interaction.response.send_message(embed=emb)
+
+    @decorators.command(
+        name='multiban',
+        description='Ban multiple users at once.'
+    )
+    @app_commands.describe(
+        users='The users to ban.',
+        duration='The length of time to ban the users.',
+        reason='The reason for banning these users.'
+    )
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(ban_members=True)
+    @app_commands.checks.bot_has_permissions(ban_members=True)
+    async def multiban(
+            self,
+            interaction: Interaction,
+            users: app_commands.Transform[List[discord.Member], transformers.MultiMemberTransformer],
+            duration: app_commands.Transform[timedelta, transformers.TimeDurationTransformer] = None,
+            reason: str = None
+    ) -> None:
+        users = cast(List[discord.Member], users)
+        duration = cast(Optional[timedelta], duration)
+
+        for user in users:
+            await interaction.guild.ban(user, reason=f'Moderator: "{interaction.user}" Reason: "{reason}"')
+
+        emb = self.bot.embeds.get(
+            title=f'Banned Members',
+            description=f'{", ".join([user.mention for user in users])}',
+            fields=[
+                {
+                    "name": "Reason",
+                    "value": reason,
+                    "inline": False
+                }
+            ]
+        )
+
+        if duration is not None:
+            unban_date = interaction.created_at + duration
+            emb.add_field(
+                name="Unbanned",
+                value=discord.utils.format_dt(unban_date, 'R')
+            )
+
+        await self.bot.db.bans.insert_multi(
+            users=users,
+            guild=interaction.guild,
+            banner=interaction.user,
+            duration=duration,
+            reason=reason
+        )
+        await interaction.response.send_message(embed=emb)
 
     @decorators.command(
         name='bans',
@@ -392,14 +386,19 @@ class ModerationCog(Cog, name="moderation"):
         if not user:
             bans = await self.bot.db.bans.get_all_active_for_guild(interaction.guild)
 
-            emb = self.bot.embeds.get(
-                title=f'Active {interaction.guild} Bans',
-                description='\n'.join(f'<@{b.user_id}>' for b in bans) if len(
-                    bans) > 0 else 'No users are banned in this server.',
-                thumbnail=interaction.guild.icon.url
+            menu = Menu(
+                MenuPageList(
+                    factory=self.bot.embeds.copy().update(thumbnail=interaction.guild.icon.url),
+                    items=[f'<@{b.user_id}>' for b in bans] if len(bans) > 0 else ['No users are banned in this server.'],
+                    title=f'Active {interaction.guild} Bans',
+                    number_items=True,
+                    per_page=15
+                ),
+                interaction=interaction,
+                delete_on_quit=False
             )
 
-            await interaction.response.send_message(embed=emb)
+            await menu.start()
         else:
             bans = await self.bot.db.bans.get_all_for_user_in_guild(user, interaction.guild)
             ban_cur = await self.bot.db.bans.get_active_for_user_in_guild(user, interaction.guild)
@@ -435,15 +434,13 @@ class ModerationCog(Cog, name="moderation"):
             if ban_cur:
                 emb.add_field(
                     name='Unban Date',
-                    value=discord.utils.format_dt(ban_cur.unban_date, 'R') if ban_cur.unban_date else '`Never`',
-                    inline=True
+                    value=discord.utils.format_dt(ban_cur.unban_date, 'R') if ban_cur.unban_date else '`Never`'
                 )
             try:
                 guild_ban = await interaction.guild.fetch_ban(user)
                 emb.add_field(
                     name='Active Ban Reason',
-                    value=guild_ban.reason,
-                    inline=True
+                    value=guild_ban.reason
                 )
             except discord.NotFound:
                 pass
@@ -466,23 +463,26 @@ class ModerationCog(Cog, name="moderation"):
                         user,
                         reason=f'{interaction.user} requested the unban of {user}: {reason}.'
                     )
-                    await interaction.response.send_message(f'Unbanned {user.mention}.', ephemeral=True)
+                    emb = self.bot.embeds.get(description=f'Unbanned {user.mention}.')
+                    await interaction.response.send_message(embed=emb, ephemeral=True)
 
                 except discord.NotFound:
                     await self.bot.db.bans.deactivate_by_id(id=ban.ban_id)
-                    await interaction.response.send_message(
-                        f'Could not unban {user.mention}. They likely have already been manually unbanned.',
-                        ephemeral=True)
+                    emb = self.bot.embeds.get(
+                        description=f'Could not unban {user.mention}. They likely have already been manually unbanned.'
+                    )
+                    await interaction.response.send_message(embed=emb, ephemeral=True)
             else:
-                await interaction.response.send_message(
-                    'That user could not be found. They likely have deleted their account.',
-                    ephemeral=True
+                emb = self.bot.embeds.get(
+                    description='That user could not be found. They likely have deleted their account.'
                 )
+                await interaction.response.send_message(embed=emb, ephemeral=True)
         else:
-            await interaction.response.send_message(
-                'My apologies, it seems that something has gone wrong with this request, and the ban you requested to remove could not be found.',
-                ephemeral=True
+            emb = self.bot.embeds.get(
+                description='My apologies, it seems that something has gone wrong with this request,'
+                            ' and the ban you requested to remove could not be found.'
             )
+            await interaction.response.send_message(embed=emb, ephemeral=True)
 
     # ---------- App Command Error Handlers ------------
     @setnick_command.error
@@ -491,10 +491,11 @@ class ModerationCog(Cog, name="moderation"):
             error = error.original
 
         if isinstance(error, discord.Forbidden):
-            await interaction.response.send_message(
-                'I am not able to change that user\'s nickname.',
-                ephemeral=True
+            emb = self.bot.embeds.get(
+                description='I am not able to change that user\'s nickname.',
+                color=discord.Color.orange()
             )
+            await interaction.response.send_message(embed=emb, ephemeral=True)
             interaction.extras['handled'] = True
 
     @ban_command.error
@@ -503,16 +504,18 @@ class ModerationCog(Cog, name="moderation"):
             error = error.original
 
         if isinstance(error, discord.Forbidden):
-            await interaction.response.send_message(
-                'I am not able to ban that user.',
-                ephemeral=True
+            emb = self.bot.embeds.get(
+                description='I am not able to ban that user.',
+                color=discord.Color.orange()
             )
+            await interaction.response.send_message(embed=emb, ephemeral=True)
             interaction.extras['handled'] = True
         elif isinstance(error, app_commands.TransformerError):
-            await interaction.response.send_message(
-                'I cannot find that member. They may have already left the server/been banned.',
-                ephemeral=True
+            emb = self.bot.embeds.get(
+                description='I cannot find that member. They may have already left the server/been banned.',
+                color=discord.Color.orange()
             )
+            await interaction.response.send_message(embed=emb, ephemeral=True)
             interaction.extras['handled'] = True
 
     # ---------- Listeners ----------
@@ -534,6 +537,13 @@ class ModerationCog(Cog, name="moderation"):
     async def on_member_unban(self, guild: discord.Guild, user: discord.User) -> None:
         self.bot.log(f'Unbanned {user} in "{guild}"')
         await self.bot.db.bans.deactivate_all_for_user_in_guild(user, guild)
+
+    @commands.Cog.listener()
+    async def on_member_update(self, before: discord.Member, after: discord.Member) -> None:
+        if not before.is_timed_out() and after.is_timed_out():
+            self.bot.log(f'"{after}" was muted in "{after.guild}" until {after.timed_out_until}')
+        elif before.is_timed_out() and not after.is_timed_out():
+            self.bot.log(f'"{after}" unmuted in "{after.guild}"')
 
     # ---------- Tasks ----------
     @tasks.loop(minutes=1)

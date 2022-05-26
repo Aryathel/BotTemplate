@@ -1,6 +1,6 @@
 import datetime
 from dataclasses import dataclass
-from typing import Optional, List
+from typing import Optional, List, cast
 
 import asyncpg
 from discord import Guild, User
@@ -21,7 +21,7 @@ class Ban:
     reason: Optional[str] = None
 
     @staticmethod
-    def schema():
+    def schema() -> str:
         return '''CREATE TABLE IF NOT EXISTS bans (
             ban_id serial PRIMARY KEY,
             user_id bigint NOT NULL,
@@ -70,8 +70,17 @@ class Bans:
                     False, user.id, guild.id
                 )
 
+    async def deactivate_all_for_users_in_guild(self, users: List[User], guild: Guild) -> None:
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                conn = cast(asyncpg.Connection, conn)
+                await conn.executemany(
+                    '''UPDATE bans SET active=$1 WHERE user_id=$2 AND guild_id=$3;''',
+                    [(False, user.id, guild.id) for user in users]
+                )
+
     async def insert(self, user: User, guild: Guild, banner: User = None, duration: Optional[datetime.timedelta] = None,
-                     reason: Optional[str] = None) -> None:
+                     reason: Optional[str] = None, active: bool = True) -> None:
         await self.deactivate_all_for_user_in_guild(user=user, guild=guild)
 
         async with self.pool.acquire() as conn:
@@ -80,7 +89,22 @@ class Bans:
                     '''INSERT INTO bans (user_id, user_name, user_avatar, guild_id, banner_id, ban_ts, duration, reason, active)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);''',
                     user.id, str(user), user.display_avatar.url, guild.id,
-                    banner.id if banner is not None else banner, utcnow(), duration, reason, True
+                    banner.id if banner is not None else banner, utcnow(), duration, reason, active
+                )
+
+    async def insert_multi(self, users: List[User], guild: Guild, banner: User = None, duration: Optional[datetime.timedelta] = None,
+                     reason: Optional[str] = None, active: bool = True) -> None:
+        await self.deactivate_all_for_users_in_guild(users=users, guild=guild)
+
+        banner_id = banner.id if banner is not None else banner
+        dt = utcnow()
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.executemany(
+                    '''INSERT INTO bans (user_id, user_name, user_avatar, guild_id, banner_id, ban_ts, duration, reason, active)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);''',
+                    [(user.id, str(user), user.display_avatar.url, guild.id,
+                    banner_id, dt, duration, reason, active) for user in users]
                 )
 
     async def get_all_active(self) -> List[Ban]:

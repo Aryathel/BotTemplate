@@ -25,6 +25,7 @@ class Group(app_commands.Group):
 
     def __init__(
             self,
+            bot = None,
             help: str = None,
             icon: str = None,
             description: str = None,
@@ -37,6 +38,7 @@ class Group(app_commands.Group):
         self.icon = icon
         self.desc = description
         self.description = f'{self.icon} {description}' if self.icon else self.description
+        self.bot = bot
 
     @property
     def long_description(self) -> str:
@@ -66,9 +68,11 @@ class Group(app_commands.Group):
         copy.module = self.module
         copy.default_permissions = self.default_permissions
         copy.guild_only = self.guild_only
+        copy.nsfw = self.nsfw
         copy._attr = self._attr
         copy._owner_cls = self._owner_cls
         copy._children = {}
+        copy.bot = self.bot
 
         copy.icon = self.icon
         copy.help = self.help
@@ -192,6 +196,7 @@ class Command(app_commands.Command):
         copy.description = self.description
         copy.default_permissions = self.default_permissions
         copy.guild_only = self.guild_only
+        copy.nsfw = self.nsfw
         copy._attr = self._attr
         copy._callback = self._callback
         copy.on_error = self.on_error

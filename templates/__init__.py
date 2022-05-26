@@ -6,6 +6,8 @@ from .types import Emoji, Permission
 
 from .sub import decorators, checks, transformers, helpcommand as helpmenu
 
+from .views import Confirmation
+
 debug = Bot.debug
 
 __all__ = [
@@ -19,5 +21,6 @@ __all__ = [
     'decorators',
     'checks',
     'transformers',
-    'helpmenu'
+    'helpmenu',
+    'Confirmation'
 ]

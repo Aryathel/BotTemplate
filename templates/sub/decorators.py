@@ -15,6 +15,7 @@ def command(
         *,
         name: str = MISSING,
         description: str = MISSING,
+        nsfw: bool = False,
         help: str = MISSING,
         icon: str = MISSING
 ) -> Callable[[CommandCallback], Command]:
@@ -29,6 +30,8 @@ def command(
         The description of the application command. This shows up in the UI to describe
         the application command. If not given, it defaults to the first line of the docstring
         of the callback shortened to 100 characters.
+    nsfw: :class:`bool`
+        Whether the command should be flagged as NSFW on Discord's end.
     help: :class:`str`
         Extra information to include in the description when information is requested in a
         help command.
@@ -51,6 +54,7 @@ def command(
         return Command(
             name=name if name is not MISSING else func.__name__,
             description=desc,
+            nsfw=nsfw,
             callback=func,
             parent=None,
             help=help,

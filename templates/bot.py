@@ -13,6 +13,7 @@ import database
 from utils import LogType, EmbedFactory, log
 from utils import TermColor as color
 from .commands import Command, Group
+from .errors import TransformerError
 
 BotType = TypeVar('BotType', bound='Bot')
 
@@ -32,17 +33,43 @@ class Cog(commands.Cog):
     name: str
     description: str
     icon: str
-    slash_commands: List[str]
+    slash_commands: List[Union[str, Group]]
     help: str = None
 
     def __init__(self, bot: BotType):
         self.bot = bot
 
     def cog_load(self) -> None:
-        self.bot.log(f'{self.qualified_name} loaded...')
+        self.bot.log(f'{self.qualified_name} loading...', nest=1)
+        for c in sorted(self.slash_commands, key=lambda com: com.name if isinstance(com, Group) else com):
+            if isinstance(c, Group):
+                self.bot.log(f'{c.name} loading...', nest=2)
+                for sub_c in c.walk_commands():
+                    if isinstance(sub_c, Group):
+                        self.bot.log(f'{sub_c.name} loading...', nest=3)
+                        for sub_sub_c in sub_c.walk_commands():
+                            self.bot.log(f'{sub_sub_c.name} added.', nest=4)
+                    else:
+                        self.bot.log(f'{sub_c.name} added.', nest=3)
+            else:
+                self.bot.log(f'{c} added', nest=2)
+        self.bot.log(f'{self.qualified_name} loaded.', nest=1)
 
     def cog_unload(self) -> None:
-        self.bot.log(f'{self.qualified_name} unloaded...')
+        self.bot.log(f'{self.qualified_name} unloading...', nest=1)
+        for c in sorted(self.slash_commands, key=lambda com: com.name if isinstance(com, Group) else com):
+            if isinstance(c, Group):
+                self.bot.log(f'{c.name} unloading...', nest=2)
+                for sub_c in c.walk_commands():
+                    if isinstance(sub_c, Group):
+                        self.bot.log(f'{sub_c.name} unloading...', nest=3)
+                        for sub_sub_c in sub_c.walk_commands():
+                            self.bot.log(f'{sub_sub_c.name} removed.', nest=4)
+                    else:
+                        self.bot.log(f'{sub_c.name} removed.', nest=3)
+            else:
+                self.bot.log(f'{c} removed', nest=2)
+        self.bot.log(f'{self.qualified_name} unloaded.', nest=1)
 
     @property
     def long_description(self) -> str:
@@ -52,6 +79,9 @@ class Cog(commands.Cog):
             return self.help
         else:
             return self.description
+
+    def __repr__(self) -> str:
+        return f'<cogs.{self.__class__.__name__}>'
 
 
 class CommandTree(app_commands.CommandTree):
@@ -72,10 +102,12 @@ class CommandTree(app_commands.CommandTree):
         )
 
         if isinstance(error, needs_syncing):
-            await interaction.response.send_message(
-                "Sorry, this command is unavailable. It likely has received an update in the backend, "
-                "and needs to be re-synced.", ephemeral=True
+            emb = self.client.embeds.get(
+                description="Sorry, this command is unavailable. It likely has received an update in the backend, "
+                            "and needs to be re-synced.",
+                color=discord.Color.brand_red()
             )
+            await interaction.response.send_message(embed=emb, ephemeral=True)
             self.client.log(
                 f'Commands need to be synced. Source: "{interaction.command.name}"',
                 urgent=True,
@@ -85,28 +117,32 @@ class CommandTree(app_commands.CommandTree):
             perms = []
             for p in error.missing_permissions:
                 perms.append(f"`{' '.join(w.capitalize() for w in p.split('_'))}`")
-            await interaction.response.send_message(
-                f'Please give me the following permissions to use this command: {", ".join(perms)}',
-                ephemeral=True
+            emb = self.client.embeds.get(
+                description=f'Please give me the following permissions to use this command: {", ".join(perms)}',
+                color=discord.Color.orange()
             )
+            await interaction.response.send_message(embed=emb, ephemeral=True)
         elif isinstance(error, app_commands.MissingPermissions):
             perms = []
             for p in error.missing_permissions:
                 perms.append(f"`{' '.join(w.capitalize() for w in p.split('_'))}`")
-            await interaction.response.send_message(
-                f'You are missing the following permissions to use this command: {", ".join(perms)}',
-                ephemeral=True
+            emb = self.client.embeds.get(
+                description=f'You are missing the following permissions to use this command: {", ".join(perms)}',
+                color=discord.Color.orange()
             )
-        elif isinstance(error, app_commands.TransformerError):
-            await interaction.response.send_message(
-                f'Failed to convert `{error.value}` to a `{error.type.name}`.',
-                ephemeral=True
+            await interaction.response.send_message(embed=emb, ephemeral=True)
+        elif isinstance(error, TransformerError):
+            emb = self.client.embeds.get(
+                description=f'Failed to convert `{error.value}` to a `{error.type.name}`.',
+                color=discord.Color.brand_red()
             )
+            await interaction.response.send_message(embed=emb, ephemeral=True)
         elif isinstance(error, discord.Forbidden):
-            await interaction.response.send_message(
-                f'I do not have permission to do that.',
-                ephemeral=True
+            emb = self.client.embeds.get(
+                description=f'I do not have permission to do that.',
+                color=discord.Color.brand_red()
             )
+            await interaction.response.send_message(embed=emb, ephemeral=True)
         else:
             self.client.log(
                 f'Unhandled "{type(error).__name__}" in "{interaction.command.name}" Command',
@@ -268,8 +304,11 @@ class Bot(commands.Bot):
 
     @staticmethod
     def log(*args, log_type: LogType = LogType.normal, divider: bool = False,
-            urgent: Optional[bool] = None, error: Optional[BaseException] = None, rel: int = 2) -> None:
-        msg = ' '.join(str(arg) for arg in args)
+            urgent: Optional[bool] = None, error: Optional[BaseException] = None,
+            rel: int = 2, separator: str = ' ', nest: int = 0) -> None:
+        separator = separator if type(separator) == str else ' '
+        nest_space = "\t" * nest
+        msg = separator.join(str(arg) for arg in args)
         if urgent:
             color.black(bg=True)
 
@@ -295,22 +334,22 @@ class Bot(commands.Bot):
                 color.magenta()
 
         if divider:
-            log(f'-------- {msg} --------', rel=rel)
+            log(f'{nest_space}-------- {msg} --------', rel=rel)
         else:
-            log(f' > {msg}', rel=rel)
+            log(f'{nest_space} > {msg}', rel=rel)
 
         if error is not None:
             print()
             for line in traceback.TracebackException(type(error), error, error.__traceback__).format():
-                print(f'{"":>26} > {line}', end='')
+                print(f'{nest_space}{"":>26} > {line}', end='')
             if divider:
-                print(f'{"":>26}----------------', end='')
+                print(f'{nest_space}{"":>26}----------------', end='')
 
         color.reset()
 
     @classmethod
-    def debug(cls, *args) -> None:
-        cls.log('DEBUG:', *args, log_type=LogType.debug, rel=3)
+    def debug(cls, *args, **kwargs) -> None:
+        cls.log('DEBUG:', *args, **kwargs, log_type=LogType.debug, rel=3)
 
     @property
     def cog_names(self) -> List[str]:

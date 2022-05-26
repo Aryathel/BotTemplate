@@ -1,6 +1,10 @@
-from typing import TypeVar, Any, Optional, Dict
+from math import ceil
+from typing import TypeVar, Any, Optional, Dict, List
 
 import discord
+
+from .embeds import EmbedFactory
+from .general import clamp
 
 MenuType = TypeVar('MenuType', bound='Menu')
 
@@ -19,6 +23,59 @@ class MenuPage:
         raise NotImplementedError
 
 
+class MenuPageList(MenuPage):
+    factory: EmbedFactory
+    items: List[Any]
+    per_page: int
+    index: int
+    title: str
+    number_items: bool
+    show_page: bool
+
+    def __init__(
+            self,
+            factory: EmbedFactory,
+            items: List[Any],
+            title: str,
+            per_page: int = 25,
+            show_page: bool = True,
+            number_items: bool = False
+    ):
+        self.factory = factory
+        self.items = items
+        self.per_page = clamp(per_page, min_val=1)
+        self.title = title
+        self.show_page = show_page
+        self.number_items = number_items
+
+    def is_paginating(self) -> bool:
+        return len(self.items) > self.per_page
+
+    def get_max_pages(self) -> int:
+        return ceil(len(self.items) / self.per_page)
+
+    async def get_page(self, page_number: int) -> Any:
+        self.index = page_number
+        return self
+
+    async def format_page(self, menu: MenuType, page: Any) -> discord.Embed:
+        start = (self.index - 1) * self.per_page
+        entries = self.get_list_frame(start)
+
+        return self.factory.get(
+            title=f'{self.title}' +
+                  (f' [{self.index}/{self.get_max_pages()}]' if self.is_paginating() and self.show_page else ''),
+            description='\n'.join(f'`{i+1+start}:` {e}' for i, e in enumerate(entries)) if self.number_items else '\n'.join(entries)
+        )
+
+    def get_list_frame(self, start: int) -> Optional[List[Any]]:
+        if start < len(self.items):
+            end = start + self.per_page
+            return self.items[start:end]
+        else:
+            return self.items
+
+
 class MenuCategory:
     page_count: int
     current_page: int
@@ -30,7 +87,8 @@ class Menu(discord.ui.View):
             self,
             page: MenuPage,
             interaction: discord.Interaction,
-            row: int = 0
+            row: int = 0,
+            delete_on_quit: bool = True
     ):
         super().__init__()
 
@@ -39,6 +97,7 @@ class Menu(discord.ui.View):
         self.current_page: int = 1
         self.row: int = row
         self.message: Optional[discord.Message] = None
+        self.delete_on_quit = delete_on_quit
 
         self.clear_items()
         self.populate()
@@ -145,5 +204,8 @@ class Menu(discord.ui.View):
     @discord.ui.button(label='Quit', style=discord.ButtonStyle.red)
     async def quit(self, interaction: discord.Interaction, button: discord.ui.button) -> None:
         await interaction.response.defer()
-        await interaction.delete_original_message()
+        if self.delete_on_quit:
+            await interaction.delete_original_message()
+        else:
+            await interaction.edit_original_message(view=None)
         self.stop()

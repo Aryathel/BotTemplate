@@ -4,10 +4,12 @@ from discord import app_commands
 
 from templates import Interaction, Cog, Command, Group, Bot
 from templates import decorators, checks, helpmenu, transformers
-from utils import LogType
+from utils import LogType, Menu
 
 
 class AdminCog(Cog, name='admin'):
+    slash_commands = ['help', 'sync']
+
     @decorators.command(
         name='help',
         description='Returns usage info about available commands.',
@@ -33,11 +35,11 @@ class AdminCog(Cog, name='admin'):
             await menu.start()
         else:
             if isinstance(command, app_commands.Command):
-                menu = helpmenu.Menu(helpmenu.HelpMenuCommand(command, self.bot.embeds), interaction)
+                menu = Menu(helpmenu.HelpMenuCommand(command, self.bot.embeds), interaction)
                 await menu.start()
 
             elif isinstance(command, Group):
-                menu = helpmenu.Menu(
+                menu = Menu(
                     helpmenu.HelpMenuGroup(
                         group=command,
                         commands_per_page=5,
@@ -51,7 +53,7 @@ class AdminCog(Cog, name='admin'):
             elif isinstance(command, Cog):
                 cog: Cog = command
                 comms = [self.bot.tree.get_command(c, guild=self.bot.GUILD) for c in cog.slash_commands]
-                menu = helpmenu.Menu(
+                menu = Menu(
                     helpmenu.HelpMenuCog(
                         cog=cog,
                         commands=comms,
@@ -67,7 +69,10 @@ class AdminCog(Cog, name='admin'):
                           description='\N{Envelope with Downwards Arrow Above} Syncs the slash commands to Discord.')
     @checks.is_owner()
     async def sync_commands(self, interaction: Interaction) -> None:
-        await interaction.response.send_message('Commands syncing...', ephemeral=True)
+        await interaction.response.send_message(
+            embed=self.bot.embeds.get(description='Syncing commands.'),
+            ephemeral=True
+        )
         await self.bot.tree.sync(guild=self.bot.GUILD)
         self.bot.log('Synced commands to Discord.', log_type=LogType.warning)
 
@@ -76,8 +81,10 @@ class AdminCog(Cog, name='admin'):
         if isinstance(error, app_commands.CommandInvokeError):
             error = error.original
         if isinstance(error, app_commands.CheckFailure):
-            await interaction.response.send_message(
-                'You need to be my creator to do that, and you are not. Sorry ¯\\_(ツ)_/¯', ephemeral=True)
+            emb = self.bot.embeds.get(
+                description='You need to be my creator to do that, and you are not. Sorry ¯\\_(ツ)_/¯'
+            )
+            await interaction.response.send_message(embed=emb, ephemeral=True)
             interaction.extras['handled'] = True
 
 

@@ -59,9 +59,12 @@ PERMISSION_FLAGS: List[str] = list(PERMISSION_GROUPS.keys()) + sorted(discord.Pe
 U_EMOJI_PATTERN = emoji.get_emoji_regexp()
 C_EMOJI_PATTERN = re.compile(r'<:(?P<name>\w+):(?P<id>\d+)>|<a:(?P<a_name>\w+):(?P<a_id>\d+)>')
 
+# Regex patterns for detecting Discord mentions.
+USER_MENTION_PATTERN = re.compile(r'<@!(?P<id>\d+)>')
+
 
 # ---------- Command Options ----------
-class AryaAppCommandOptionType(Enum):
+class AppCommandOptionType(Enum):
     """Enum for custom command option types."""
     emoji = 12
     command = 13
@@ -116,3 +119,10 @@ class Permission(NamedTuple):
             res.append(self.flag)
 
         return res
+
+    @property
+    def scheme(self) -> discord.Permissions:
+        perms = discord.Permissions()
+        for perm in self.permissions:
+            setattr(perms, perm, True)
+        return perms

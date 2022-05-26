@@ -5,33 +5,35 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from utils import tdelta_from_str, clamp
+from utils import tdelta_from_str, clamp, str_from_tdelta
 from templates.bot import Interaction, Cog
 from templates.commands import Command, Group
-from templates.types import AryaAppCommandOptionType, COLORS, RGB_PATTERN, PERMISSION_FLAGS, U_EMOJI_PATTERN, \
-    C_EMOJI_PATTERN, Emoji, Permission
+from templates.types import AppCommandOptionType, COLORS, RGB_PATTERN, PERMISSION_FLAGS, U_EMOJI_PATTERN, \
+    C_EMOJI_PATTERN, Emoji, Permission, USER_MENTION_PATTERN
+from ..errors import TransformerError
 
 
-# ---------- Transformer Error ----------
-class AryaTransformerError(app_commands.AppCommandError):
-    def __init__(self, value: Any, opt_type: AryaAppCommandOptionType, transformer: Type[app_commands.Transformer]):
-        self.value: Any = value
-        self.type: AryaAppCommandOptionType = opt_type
-        self.transformer: Type[app_commands.Transformer] = transformer
+# ---------- Multiple User Argument ----------
+class MultiUserTransformer(app_commands.Transformer):
+    @classmethod
+    async def transform(cls, interaction: Interaction, value: Any) -> List[discord.User]:
+        users = []
+        for match in USER_MENTION_PATTERN.findall(value):
+            user = interaction.client.get_user(int(match))
+            if user:
+                users.append(user)
+        return users
 
-        try:
-            result_type = transformer.transform.__annotations__['return']
-        except KeyError:
-            name = transformer.__name__
-            if name.endswith('Transformer'):
-                result_type = name[:-11]
-            else:
-                result_type = name
-        else:
-            if isinstance(result_type, type):
-                result_type = result_type.__name__
 
-        super().__init__(f'Failed to convert {value} to {result_type!s}')
+class MultiMemberTransformer(app_commands.Transformer):
+    @classmethod
+    async def transform(cls, interaction: Interaction, value: Any) -> List[discord.Member]:
+        users = []
+        for match in USER_MENTION_PATTERN.findall(value):
+            member = interaction.guild.get_member(int(match))
+            if member:
+                users.append(member)
+        return users
 
 
 # ---------- Color Argument ----------
@@ -52,9 +54,9 @@ class ColorTransformer(app_commands.Transformer):
             try:
                 return discord.Color.from_str(value)
             except ValueError:
-                raise AryaTransformerError(
+                raise TransformerError(
                     value=value,
-                    opt_type=AryaAppCommandOptionType.color,
+                    opt_type=AppCommandOptionType.color,
                     transformer=ColorTransformer
                 )
 
@@ -84,9 +86,9 @@ class PermissionTransformer(app_commands.Transformer):
             return Permission(flag=value)
 
         # If no permissions were found for the argument, raise an error.
-        raise AryaTransformerError(
+        raise TransformerError(
             value=value,
-            opt_type=AryaAppCommandOptionType.permission,
+            opt_type=AppCommandOptionType.permission,
             transformer=PermissionTransformer
         )
 
@@ -118,9 +120,9 @@ class CommandTransformer(app_commands.Transformer):
                 return obj
 
         # If no commands were found for the argument, raise an error.
-        raise AryaTransformerError(
+        raise TransformerError(
             value=value,
-            opt_type=AryaAppCommandOptionType.command,  # type: ignore
+            opt_type=AppCommandOptionType.command,  # type: ignore
             transformer=CommandTransformer
         )
 
@@ -156,9 +158,9 @@ class TimeDurationTransformer(app_commands.Transformer):
             pass
 
         # If no duration could be read from the input.
-        raise AryaTransformerError(
+        raise TransformerError(
             value=value,
-            opt_type=AryaAppCommandOptionType.time_duration,  # type: ignore
+            opt_type=AppCommandOptionType.time_duration,  # type: ignore
             transformer=TimeDurationTransformer
         )
 
@@ -168,22 +170,7 @@ class TimeDurationTransformer(app_commands.Transformer):
     ) -> List[app_commands.Choice[str]]:
         try:
             duration = tdelta_from_str(value)
-            str_form = str(duration).split(' ')
-            if len(str_form) > 2:
-                res = ' '.join(str_form[:2])
-            else:
-                res = ''
-
-            hours, minutes, seconds = str_form[-1].split(':')
-            hours = int(hours)
-            minutes = int(minutes)
-            seconds = float(seconds)
-            if hours > 0:
-                res += f'{" " if not res == "" else ""}{hours} Hours'
-            if minutes > 0:
-                res += f'{", " if not res == "" else ""}{minutes} Minutes'
-            if seconds > 0:
-                res += f'{", " if not res == "" else ""}{seconds} Seconds'
+            res = str_from_tdelta(duration)
 
             return [app_commands.Choice(name=res, value=res)]
 
@@ -240,16 +227,10 @@ class EmojiTransformer(discord.app_commands.Transformer):
             )
         else:
             # If no emojis were found in the argument, raise an error.
-            raise AryaTransformerError(
+            raise TransformerError(
                 value=value,
-                opt_type=AryaAppCommandOptionType.emoji,  # type: ignore
+                opt_type=AppCommandOptionType.emoji,  # type: ignore
                 transformer=EmojiTransformer
             )
 
         return emote
-
-    @classmethod
-    def autocomplete(
-            cls, interaction: discord.Interaction, value: str
-    ) -> None:
-        pass

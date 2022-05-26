@@ -105,7 +105,6 @@ class MiscCog(Cog, name="miscellaneous"):
     async def user_command(self, interaction: Interaction, user: discord.Member = None) -> None:
         if not user:
             user = interaction.user
-
         emb = self.bot.embeds.get(
             fields=[
                 {
@@ -121,7 +120,7 @@ class MiscCog(Cog, name="miscellaneous"):
             ],
             thumbnail=user.display_avatar.url,
             author_name=user,
-            color=user.color
+            color=user.color if not user.color == discord.Color.default() else None
         )
         await interaction.response.send_message(embed=emb)
 
