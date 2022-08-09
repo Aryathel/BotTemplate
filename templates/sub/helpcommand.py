@@ -4,7 +4,7 @@ from typing import Any, List, Optional, Dict, Union
 import discord
 
 from utils import EmbedFactory, Menu, MenuPage
-from ..bot import Bot, Cog, Interaction
+from ..bot import Cog, Interaction
 from ..commands import Command, Group
 
 
@@ -107,8 +107,10 @@ class HelpMenuCommand(MenuPage):
 
         emb = self.embeds.get(
             title=f'{self.command.qualified_name} {" ".join(list(params.keys()))}',
-            description=self.command.desc
+            description=self.command.long_description
         )
+        if self.is_paginating():
+            emb.title += f' [{self.index}/{self.get_max_pages()}]'
         for sig, param in params.items():
             emb.add_field(
                 name=sig,
@@ -155,6 +157,8 @@ class HelpMenuGroup(MenuPage):
             description=self.group.long_description,
             footer='Use \'/help command\' for more information on a command.'
         )
+        if self.is_paginating():
+            emb.title += f' [{self.index}/{self.get_max_pages()}]'
 
         start = (self.index - 1) * self.page_limit
         entries = self.get_command_frame(start)
@@ -226,6 +230,8 @@ class HelpMenuCog(MenuPage):
             description=self.cog.long_description,
             footer='Use \'/help command\' for more information on a command.'
         )
+        if self.is_paginating():
+            emb.title += f' [{self.index}/{self.get_max_pages()}]'
 
         start = (self.index - 1) * self.page_limit
         entries = self.get_command_frame(start)

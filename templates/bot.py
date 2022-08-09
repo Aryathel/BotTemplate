@@ -1,6 +1,6 @@
 import asyncio
 import traceback
-from typing import Optional, Any, Type, Union, List, Dict, Mapping, TypeVar, Generator
+from typing import Optional, Any, Type, Union, List, Dict, Mapping, TypeVar, Generator, ClassVar, TYPE_CHECKING
 
 import asyncpg
 import discord
@@ -10,10 +10,13 @@ from discord.utils import MISSING
 from pyshorteners import Shortener
 
 import database
-from utils import LogType, EmbedFactory, log
-from utils import TermColor as color
+from database.models.twitter_monitors import TwitterMonitor
+from utils import LogType, EmbedFactory, log, command_name, TermColor as color
 from .commands import Command, Group
 from .errors import TransformerError
+
+if TYPE_CHECKING:
+    from tweepy.asynchronous import AsyncClient
 
 BotType = TypeVar('BotType', bound='Bot')
 
@@ -33,38 +36,147 @@ class Cog(commands.Cog):
     name: str
     description: str
     icon: str
-    slash_commands: List[Union[str, Group]]
+    slash_commands: List[Union[str, Group, 'GroupCog']]
     help: str = None
+    nested: bool = False
+
+    ignore_load_unload: bool = False
+
+    def __new__(cls, *args: Any, **kwargs: Any):
+        # For issue 426, we need to store a copy of the command objects
+        # since we modify them to inject `self` to them.
+        # To do this, we need to interfere with the Cog creation process.
+        self = super().__new__(cls)
+        cmd_attrs = cls.__cog_settings__
+
+        # Either update the command with the cog provided defaults or copy it.
+        # r.e type ignore, type-checker complains about overriding a ClassVar
+        self.__cog_commands__ = tuple(c._update_copy(cmd_attrs) for c in cls.__cog_commands__)  # type: ignore
+
+        lookup = {cmd.qualified_name: cmd for cmd in self.__cog_commands__}
+
+        # Register the application commands
+        children: List[Union[app_commands.Group, app_commands.Command[..., ..., Any]]] = []
+
+        if cls.__cog_is_app_commands_group__:
+            group = Group(
+                help=cls.help,
+                name=cls.__cog_group_name__,
+                description=cls.description,
+                nsfw=cls.__cog_group_nsfw__,
+                parent=None,
+                guild_ids=getattr(cls, '__discord_app_commands_default_guilds__', None),
+                guild_only=getattr(cls, '__discord_app_commands_guild_only__', False),
+                default_permissions=getattr(cls, '__discord_app_commands_default_permissions__', None),
+            )
+        else:
+            group = None
+
+        self.__cog_app_commands_group__ = group
+
+        # Update the Command instances dynamically as well
+        for command in self.__cog_commands__:
+            setattr(self, command.callback.__name__, command)
+            parent = command.parent
+            if parent is not None:
+                # Get the latest parent reference
+                parent = lookup[parent.qualified_name]  # type: ignore
+
+                # Update our parent's reference to our self
+                parent.remove_command(command.name)  # type: ignore
+                parent.add_command(command)  # type: ignore
+
+            if hasattr(command, '__commands_is_hybrid__') and parent is None:
+                app_command: Optional[Union[app_commands.Group, app_commands.Command[Self, ..., Any]]] = getattr(
+                    command, 'app_command', None
+                )
+                if app_command:
+                    group_parent = self.__cog_app_commands_group__
+                    app_command = app_command._copy_with(parent=group_parent, binding=self)
+                    # The type checker does not see the app_command attribute even though it exists
+                    command.app_command = app_command  # type: ignore
+
+                    if self.__cog_app_commands_group__:
+                        children.append(app_command)
+
+        for command in cls.__cog_app_commands__:
+            copy = command._copy_with(parent=self.__cog_app_commands_group__, binding=self)
+
+            # Update set bindings
+            if copy._attr:
+                setattr(self, copy._attr, copy)
+
+            children.append(copy)
+
+        self.__cog_app_commands__ = children
+        if self.__cog_app_commands_group__:
+            self.__cog_app_commands_group__.module = cls.__module__
+            mapping = {cmd.name: cmd for cmd in children}
+            if len(mapping) > 25:
+                raise TypeError('maximum number of application command children exceeded')
+
+            self.__cog_app_commands_group__._children = mapping  # type: ignore  # Variance issue
+
+        return self
 
     def __init__(self, bot: BotType):
         self.bot = bot
 
     def cog_load(self) -> None:
+        if self.nested:
+            return
+
         self.bot.log(f'{self.qualified_name} loading...', nest=1)
-        for c in sorted(self.slash_commands, key=lambda com: com.name if isinstance(com, Group) else com):
-            if isinstance(c, Group):
-                self.bot.log(f'{c.name} loading...', nest=2)
-                for sub_c in c.walk_commands():
-                    if isinstance(sub_c, Group):
-                        self.bot.log(f'{sub_c.name} loading...', nest=3)
-                        for sub_sub_c in sub_c.walk_commands():
-                            self.bot.log(f'{sub_sub_c.name} added.', nest=4)
+        for c in sorted(self.slash_commands, key=command_name):
+            if isinstance(c, Group) or isinstance(c, GroupCog):
+                group_name = command_name(c)
+                self.bot.log(f'{group_name} loading...', nest=2)
+                if isinstance(c, Group):
+                    obj = c
+                else:
+                    obj = c.app_command
+                for sub_c in obj.walk_commands():
+                    name = command_name(sub_c)
+                    if isinstance(sub_c, Group) or isinstance(sub_c, GroupCog):
+                        self.bot.log(f'{name} loading...', nest=3)
+                        if isinstance(sub_c, Group):
+                            sub_obj = c
+                        else:
+                            sub_obj = sub_c.app_command
+                        for sub_sub_c in sub_obj.walk_commands():
+                            name = command_name(sub_sub_c)
+                            self.bot.log(f'{name} added.', nest=4)
                     else:
-                        self.bot.log(f'{sub_c.name} added.', nest=3)
+                        self.bot.log(f'{name} added.', nest=3)
+                self.bot.log(f'{group_name} loaded.', nest=2)
             else:
                 self.bot.log(f'{c} added', nest=2)
         self.bot.log(f'{self.qualified_name} loaded.', nest=1)
 
     def cog_unload(self) -> None:
+        if self.nested:
+            return
+
         self.bot.log(f'{self.qualified_name} unloading...', nest=1)
-        for c in sorted(self.slash_commands, key=lambda com: com.name if isinstance(com, Group) else com):
-            if isinstance(c, Group):
-                self.bot.log(f'{c.name} unloading...', nest=2)
-                for sub_c in c.walk_commands():
-                    if isinstance(sub_c, Group):
-                        self.bot.log(f'{sub_c.name} unloading...', nest=3)
-                        for sub_sub_c in sub_c.walk_commands():
-                            self.bot.log(f'{sub_sub_c.name} removed.', nest=4)
+        for c in sorted(self.slash_commands, key=command_name):
+            if isinstance(c, Group) or isinstance(c, GroupCog):
+                name = command_name(c)
+                self.bot.log(f'{name} unloading...', nest=2)
+                if isinstance(c, Group):
+                    obj = c
+                else:
+                    obj = c.app_command
+                for sub_c in obj.walk_commands():
+                    name = command_name(sub_c)
+                    if isinstance(sub_c, Group) or isinstance(sub_c, GroupCog):
+                        self.bot.log(f'{name} unloading...', nest=3)
+                        if isinstance(sub_c, Group):
+                            sub_obj = c
+                        else:
+                            sub_obj = sub_c.app_command
+                        for sub_sub_c in sub_obj.walk_commands():
+                            name = command_name(sub_sub_c)
+                            self.bot.log(f'{name} removed.', nest=4)
                     else:
                         self.bot.log(f'{sub_c.name} removed.', nest=3)
             else:
@@ -82,6 +194,10 @@ class Cog(commands.Cog):
 
     def __repr__(self) -> str:
         return f'<cogs.{self.__class__.__name__}>'
+
+
+class GroupCog(Cog):
+    __cog_is_app_commands_group__: ClassVar[bool] = True
 
 
 class CommandTree(app_commands.CommandTree):
@@ -189,6 +305,9 @@ class Bot(commands.Bot):
     cogs: Mapping[str, Cog]
     tree: CommandTree
 
+    twitter: Optional['AsyncClient']
+    twitter_monitors: Optional[list[TwitterMonitor]]
+
     def __init__(
             self,
             command_prefix: str,
@@ -215,7 +334,8 @@ class Bot(commands.Bot):
         self.COGS = [
             "cogs.admin",
             "cogs.misc",
-            "cogs.moderation"
+            "cogs.moderation",
+            "cogs.twitter",
         ]
         self.TOKEN = token
         self.GUILD = guild
@@ -332,6 +452,12 @@ class Bot(commands.Bot):
                 color.magenta(bg=True)
             else:
                 color.magenta()
+        elif log_type == LogType.twitter:
+            if urgent:
+                color.blue(bg=True)
+                color.black()
+            else:
+                color.blue()
 
         if divider:
             log(f'{nest_space}-------- {msg} --------', rel=rel)
@@ -361,7 +487,10 @@ class Bot(commands.Bot):
         choices: Dict[str, Union[Cog, Command, Group]] = {}
         for _, cog in self.cogs.items():
             if not cog.qualified_name == 'admin':
-                choices[cog.name] = cog
+                if isinstance(cog, GroupCog):
+                    choices[cog.__cog_group_name__] = cog
+                else:
+                    choices[cog.name] = cog
 
         for command in self.tree.walk_commands(guild=self.GUILD):
             choices[command.qualified_name.lower()] = command

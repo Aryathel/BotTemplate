@@ -25,7 +25,7 @@ class Group(app_commands.Group):
 
     def __init__(
             self,
-            bot = None,
+            bot=None,
             help: str = None,
             icon: str = None,
             description: str = None,

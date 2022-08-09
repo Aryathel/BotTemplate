@@ -1,8 +1,8 @@
 from typing import Any, Type
 
-import discord
 from discord import app_commands
-from .types import AppCommandOptionType
+
+from .types import AppCommandOptionType, TWITTER_HTTP_ERRORS
 
 
 # ---------- Transformer Error ----------
@@ -25,3 +25,12 @@ class TransformerError(app_commands.AppCommandError):
                 result_type = result_type.__name__
 
         super().__init__(f'Failed to convert {value} to {result_type!s}')
+
+
+# ---------- Twitter Error ----------
+class TwitterError(BaseException):
+    def __init__(self, status_code: int) -> None:
+        name, message = TWITTER_HTTP_ERRORS.get(status_code, ("Unknown Error", "An unknown Twitter error occurred."))
+        msg = f"{status_code} {name.upper()}: {message}"
+
+        super().__init__(msg)

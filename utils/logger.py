@@ -115,6 +115,7 @@ class LogType(Enum):
     warning = 3
     error = 4
     debug = 5
+    twitter = 6
 
 
 def log(msg: str = "", /, rel: int = 2, end: str = ''):

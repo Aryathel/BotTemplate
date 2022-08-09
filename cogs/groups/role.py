@@ -3,24 +3,55 @@ from typing import cast
 import discord
 from discord import app_commands
 
-from templates import Group, Interaction, Permission, Emoji, Confirmation, Bot
+from templates import GroupCog, Interaction, Permission, Emoji, RoleSortOption, BulkRoleTargetOption
 from templates import decorators, transformers
+from templates.views import Confirmation
 
 
-class Role(Group, name='role'):
-    description = 'Commands for assigning, removing, and updating roles.',
+@app_commands.guild_only()
+class Role(GroupCog, group_name='role', name='roles'):
+    description = 'Commands for assigning, removing, and updating roles.'
     help = 'These commands are meant for use by moderators, and likely will not be available to normal users.'
-    bot: Bot
-
-    def __init__(self, bot: Bot):
-        self.bot = bot
-        super().__init__()
+    slash_commands = ['give', 'take', 'bulkgive', 'bulktake', 'create', 'edit', 'delete', 'permissions', 'color']
+    nested = True
 
     # ---------- App Commands ----------
     @decorators.command(
+        name='list',
+        description='Lists roles for the server.',
+        icon='\N{SCROLL}'
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(sort_method="The method to use to sort the roles. Defaults to sorting by member count.")
+    @decorators.enum_choices(sort_method=RoleSortOption)
+    async def role_list_command(self, interaction: Interaction, sort_method: app_commands.Choice[int] = 0) -> None:
+        if not isinstance(sort_method, int):
+            sort_method = sort_method.value
+        sort_method = RoleSortOption(sort_method)
+
+        if sort_method == RoleSortOption.member_count:
+            roles = sorted(interaction.guild.roles, key=lambda r: len(r.members), reverse=True)
+        elif sort_method == RoleSortOption.name:
+            roles = sorted(interaction.guild.roles, key=lambda r: r.name.lower())
+        else:
+            roles = interaction.guild.roles
+            roles.reverse()
+
+        max_length = max(len(r.name) for r in roles)
+        largest_group = max(len(str(len(r.members))) for r in roles)
+
+        emb = self.bot.embeds.get(
+            title=f'{interaction.guild.name} Roles',
+            description='```' + '\n'.join(
+                            f'{role.name:{max_length + 2}}{len(role.members):>{largest_group}}' for role in roles
+                        ) + '```'
+        )
+        await interaction.response.send_message(embed=emb)
+
+    @decorators.command(
         name='give',
         description='Gives a role to a user.',
-        icon='\N{HEAVY PLUS SIGN}'
+        icon='\N{HEAVY PLUS SIGN}',
     )
     @app_commands.describe(
         role='The role to assign to the user.',
@@ -87,11 +118,7 @@ class Role(Group, name='role'):
         bulk_type='The type of users to give the role to.'
     )
     @app_commands.rename(bulk_type='type')
-    @app_commands.choices(bulk_type=[
-        app_commands.Choice(name='All Users', value=1),
-        app_commands.Choice(name='Bots', value=2),
-        app_commands.Choice(name='Humans', value=3)
-    ])
+    @decorators.enum_choices(bulk_type=BulkRoleTargetOption)
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(administrator=True)
     @app_commands.checks.bot_has_permissions(manage_roles=True)
@@ -101,33 +128,38 @@ class Role(Group, name='role'):
             role: discord.Role,
             bulk_type: app_commands.Choice[int]
     ) -> None:
+        bulk_type = BulkRoleTargetOption(bulk_type.value)
+
         count_success = 0
         count_fail = 0
         type_str = None
-        if bulk_type.value == 1:
+        if bulk_type == BulkRoleTargetOption.all_users:
             type_str = 'users'
             for member in interaction.guild.members:
                 try:
-                    await member.add_roles(role)
-                    count_success += 1
+                    if role not in member.roles:
+                        await member.add_roles(role)
+                        count_success += 1
                 except discord.Forbidden:
                     count_fail += 1
-        elif bulk_type.value == 2:
+        elif bulk_type == BulkRoleTargetOption.bots:
             type_str = 'bots'
             for member in interaction.guild.members:
                 if member.bot:
                     try:
-                        await member.add_roles(role)
-                        count_success += 1
+                        if role not in member.roles:
+                            await member.add_roles(role)
+                            count_success += 1
                     except discord.Forbidden:
                         count_fail += 1
-        elif bulk_type.value == 3:
+        elif bulk_type == BulkRoleTargetOption.humans:
             type_str = 'humans'
             for member in interaction.guild.members:
                 if not member.bot:
                     try:
-                        await member.add_roles(role)
-                        count_success += 1
+                        if role not in member.roles:
+                            await member.add_roles(role)
+                            count_success += 1
                     except discord.Forbidden:
                         count_fail += 1
 
@@ -147,11 +179,7 @@ class Role(Group, name='role'):
         bulk_type='The type of users to take the role from.'
     )
     @app_commands.rename(bulk_type='type')
-    @app_commands.choices(bulk_type=[
-        app_commands.Choice(name='All Users', value=1),
-        app_commands.Choice(name='Bots', value=2),
-        app_commands.Choice(name='Humans', value=3)
-    ])
+    @decorators.enum_choices(bulk_type=BulkRoleTargetOption)
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(administrator=True)
     @app_commands.checks.bot_has_permissions(manage_roles=True)
@@ -161,33 +189,38 @@ class Role(Group, name='role'):
             role: discord.Role,
             bulk_type: app_commands.Choice[int]
     ) -> None:
+        bulk_type = BulkRoleTargetOption(bulk_type.value)
+
         count_success = 0
         count_fail = 0
         type_str = None
-        if bulk_type.value == 1:
+        if bulk_type == BulkRoleTargetOption.all_users:
             type_str = 'users'
             for member in interaction.guild.members:
                 try:
-                    await member.remove_roles(role)
-                    count_success += 1
+                    if role in member.roles:
+                        await member.remove_roles(role)
+                        count_success += 1
                 except discord.Forbidden:
                     count_fail += 1
-        elif bulk_type.value == 2:
+        elif bulk_type == BulkRoleTargetOption.bots:
             type_str = 'bots'
             for member in interaction.guild.members:
                 if member.bot:
                     try:
-                        await member.remove_roles(role)
-                        count_success += 1
+                        if role in member.roles:
+                            await member.remove_roles(role)
+                            count_success += 1
                     except discord.Forbidden:
                         count_fail += 1
-        elif bulk_type.value == 3:
+        elif bulk_type == BulkRoleTargetOption.humans:
             type_str = 'humans'
             for member in interaction.guild.members:
                 if not member.bot:
                     try:
-                        await member.remove_roles(role)
-                        count_success += 1
+                        if role in member.roles:
+                            await member.remove_roles(role)
+                            count_success += 1
                     except discord.Forbidden:
                         count_fail += 1
 

@@ -2,13 +2,13 @@ from typing import Mapping, Union
 
 from discord import app_commands
 
-from templates import Interaction, Cog, Command, Group, Bot
+from templates import Interaction, Cog, Command, Group, Bot, GroupCog
 from templates import decorators, checks, helpmenu, transformers
 from utils import LogType, Menu
 
 
 class AdminCog(Cog, name='admin'):
-    slash_commands = ['help', 'sync']
+    slash_commands = ['help', 'sync', 'source']
 
     @decorators.command(
         name='help',
@@ -22,13 +22,24 @@ class AdminCog(Cog, name='admin'):
             command: app_commands.Transform[Union[Cog, Group, Command], transformers.CommandTransformer] = None
     ):
         if command is None:
-            bot_cogs: Mapping[str, Cog] = self.bot.cogs
-            cogs = [(name, cog) for name, cog in bot_cogs.items() if not cog.qualified_name == 'admin']
+            bot_cogs: Mapping[str, Union[Cog, GroupCog]] = self.bot.cogs
+            cogs = [(name, cog) for name, cog in bot_cogs.items() if not cog.qualified_name == 'admin' and not cog.nested]
             cogs = sorted(cogs, key=lambda e: e[0])
 
             mapping = {}
             for name, cog in cogs:
-                mapping[cog] = [self.bot.tree.get_command(c, guild=self.bot.GUILD) for c in cog.slash_commands]
+                mapping[cog] = []
+
+                if isinstance(cog, GroupCog):
+                    for com in cog.app_command.walk_commands():
+                        mapping[cog].append(com)
+                else:
+                    for c in cog.slash_commands:
+                        if isinstance(c, str):
+                            mapping[cog].append(self.bot.tree.get_command(c, guild=self.bot.GUILD))
+                        elif isinstance(c, GroupCog):
+                            for com in c.app_command.walk_commands():
+                                mapping[cog].append(com)
 
             menu = helpmenu.HelpMenu(helpmenu.HelpMenuIndex(self.bot.embeds), interaction)
             menu.add_modules(mapping)
@@ -38,7 +49,7 @@ class AdminCog(Cog, name='admin'):
                 menu = Menu(helpmenu.HelpMenuCommand(command, self.bot.embeds), interaction)
                 await menu.start()
 
-            elif isinstance(command, Group):
+            elif isinstance(command, app_commands.Group):
                 menu = Menu(
                     helpmenu.HelpMenuGroup(
                         group=command,
@@ -65,9 +76,24 @@ class AdminCog(Cog, name='admin'):
                 )
                 await menu.start()
 
+    @decorators.command(
+        name='source',
+        description='Shares a link to the source code for the project, or for a specific command.',
+        icon='\N{EXCLAMATION QUESTION MARK}'
+    )
+    @app_commands.describe(command='A command, or group of commands, to get the source code for.')
+    async def help_command(
+            self,
+            interaction: Interaction,
+            command: app_commands.Transform[Union[Cog, Group, Command], transformers.CommandTransformer] = None
+    ) -> None:
+        self.bot.log(command)
+        await interaction.response.send_message("Not Yet Implemented", ephemeral=True)
+
     @app_commands.command(name='sync',
                           description='\N{Envelope with Downwards Arrow Above} Syncs the slash commands to Discord.')
     @checks.is_owner()
+    @app_commands.checks.bot_has_permissions(use_application_commands=True)
     async def sync_commands(self, interaction: Interaction) -> None:
         await interaction.response.send_message(
             embed=self.bot.embeds.get(description='Syncing commands.'),

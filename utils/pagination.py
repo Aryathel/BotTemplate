@@ -88,7 +88,8 @@ class Menu(discord.ui.View):
             page: MenuPage,
             interaction: discord.Interaction,
             row: int = 0,
-            delete_on_quit: bool = True
+            delete_on_quit: bool = True,
+            ephemeral: bool = False
     ):
         super().__init__()
 
@@ -98,6 +99,7 @@ class Menu(discord.ui.View):
         self.row: int = row
         self.message: Optional[discord.Message] = None
         self.delete_on_quit = delete_on_quit
+        self.ephemeral = ephemeral
 
         self.clear_items()
         self.populate()
@@ -136,7 +138,8 @@ class Menu(discord.ui.View):
                 self.add_item(self.go_back)
                 self.add_item(self.go_next)
                 self.add_item(self.go_last)
-                self.add_item(self.quit)
+                if not self.ephemeral:
+                    self.add_item(self.quit)
 
     async def show_page(self, interaction: discord.Interaction, page_num: int) -> None:
         page = await self.pages.get_page(page_num)
@@ -183,7 +186,7 @@ class Menu(discord.ui.View):
             response.setdefault('content', content)
 
         self._update_buttons(1)
-        await self.interaction.response.send_message(**response, view=self)
+        await self.interaction.response.send_message(**response, view=self, ephemeral=self.ephemeral)
 
     @discord.ui.button(label='⋘', style=discord.ButtonStyle.grey)
     async def go_first(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:

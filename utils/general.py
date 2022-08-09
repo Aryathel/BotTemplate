@@ -1,7 +1,8 @@
 from datetime import timedelta
 from typing import Union
 
-
+from discord import app_commands
+from discord.ext import commands
 import pytimeparse
 
 
@@ -42,3 +43,12 @@ def str_from_tdelta(duration: timedelta) -> str:
         res += f'{", " if not res == "" else ""}{seconds} Seconds'
 
     return res
+
+
+def command_name(com: Union[str, app_commands.Group, commands.GroupCog]) -> str:
+    if isinstance(com, app_commands.Group) or isinstance(com, app_commands.Command):
+        return com.qualified_name
+    elif hasattr(com, 'app_command'):
+        return com.app_command.qualified_name
+    else:
+        return com

@@ -25,6 +25,9 @@ from templates import decorators, transformers
 from utils import LogType, clamp, Menu, MenuPageList
 
 from .groups.role import Role
+from .groups.warn import Warn
+from .groups.reactionrole import ReactionRole
+from .groups.embeds import Embeds
 
 
 # ---------- Autocompletion functions. ----------
@@ -45,12 +48,21 @@ class ModerationCog(Cog, name="moderation"):
     icon = "\N{SHIELD}"
 
     role: Role
+    warn: Warn
+    reactionrole: ReactionRole
+    embeds: Embeds
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.role = Role(bot=self.bot)
-        self.slash_commands = ['setnick', 'bans', 'ban', 'unban', self.role]
+        self.warn = Warn(bot=self.bot)
+        self.reactionrole = ReactionRole(bot=self.bot)
+        self.embeds = Embeds(bot=self.bot)
+        self.slash_commands = [
+            'setnick', 'bans', 'ban', 'unban', 'warn',
+            self.role, self.warn, self.reactionrole, self.embeds
+        ]
 
         self.moderation_task.start()
 
@@ -218,6 +230,40 @@ class ModerationCog(Cog, name="moderation"):
         emb = self.bot.embeds.get(
             description=f'{user.mention} unmuted'
         )
+        await interaction.response.send_message(embed=emb)
+
+    @decorators.command(
+        name='warn',
+        description='Warns a user and logs the infraction.',
+        icon='\N{WARNING SIGN}'
+    )
+    @app_commands.describe(
+        user='The user to warn.',
+        reason='The reason for the warning.'
+    )
+    @app_commands.guild_only()
+    @app_commands.checks.bot_has_permissions(moderate_members=True)
+    @app_commands.checks.has_permissions(moderate_members=True)
+    async def warn_command(self, interaction: Interaction, user: discord.User, reason: str) -> None:
+        id = await self.bot.db.warns.insert(user, interaction.guild, interaction.user, reason)
+
+        emb = self.bot.embeds.get(
+            title=f'Warned {user}',
+            thumbnail=user.display_avatar.url,
+            fields=[
+                {
+                    'name': 'ID',
+                    'value': id,
+                    'inline': False,
+                },
+                {
+                    'name': 'Reason',
+                    'value': reason,
+                    'inline': False,
+                }
+            ]
+        )
+
         await interaction.response.send_message(embed=emb)
 
     @decorators.command(
@@ -391,7 +437,7 @@ class ModerationCog(Cog, name="moderation"):
                     factory=self.bot.embeds.copy().update(thumbnail=interaction.guild.icon.url),
                     items=[f'<@{b.user_id}>' for b in bans] if len(bans) > 0 else ['No users are banned in this server.'],
                     title=f'Active {interaction.guild} Bans',
-                    number_items=True,
+                    number_items=len(bans) > 0,
                     per_page=15
                 ),
                 interaction=interaction,
@@ -575,4 +621,9 @@ class ModerationCog(Cog, name="moderation"):
 
 
 async def setup(bot: Bot):
-    await bot.add_cog(ModerationCog(bot), guilds=[bot.GUILD])
+    cog = ModerationCog(bot)
+    await bot.add_cog(cog, guilds=[bot.GUILD])
+    await bot.add_cog(cog.role, guilds=[bot.GUILD])
+    await bot.add_cog(cog.warn, guilds=[bot.GUILD])
+    await bot.add_cog(cog.reactionrole, guilds=[bot.GUILD])
+    await bot.add_cog(cog.embeds, guilds=[bot.GUILD])

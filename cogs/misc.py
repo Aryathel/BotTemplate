@@ -182,7 +182,7 @@ class MiscCog(Cog, name="miscellaneous"):
             emoji: app_commands.Transform[Emoji, transformers.EmojiTransformer]
     ) -> None:
         emoji: Emoji
-        if emoji.is_known:
+        if emoji.is_custom and emoji.is_known:
             try:
                 invite = await emoji.discord_emoji.guild.vanity_invite()
             except Exception as e:

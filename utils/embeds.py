@@ -63,28 +63,28 @@ class EmbedFactory:
 
         # Setting the embed field values to be the given values if they exist,
         # and otherwise defaulting to the factory defaults, which may be None.
-        embed.colour = self.color if not color else color
-        embed.title = self.title if not title else title
-        embed.url = self.url if not url else url
-        embed.description = self.description if not description else description
-        embed.timestamp = self.timestamp if not timestamp else timestamp
+        embed.colour = color or self.color
+        embed.title = title or self.title
+        embed.url = url or self.url
+        embed.description = description or self.description
+        embed.timestamp = timestamp or self.timestamp
 
         embed.set_footer(
-            text=self.footer if not footer else footer,
-            icon_url=self.footer_icon if not footer_icon else footer_icon
+            text=footer or self.footer,
+            icon_url=footer_icon or self.footer_icon
         )
 
         if image is not None or self.image is not None:
-            embed.set_image(url=self.image if not image else image)
+            embed.set_image(url=image or self.image)
         if thumbnail is not None or self.thumbnail is not None:
-            embed.set_thumbnail(url=self.thumbnail if not thumbnail else thumbnail)
+            embed.set_thumbnail(url=thumbnail or self.thumbnail)
 
         # The author section of an embed cannot be shown unless a name is present of some kind.
         if author_name is not None or self.author_name is not None:
             embed.set_author(
-                name=self.author_name if not author_name else author_name,
-                url=self.author_url if not author_url else author_url,
-                icon_url=self.author_icon_url if not author_icon_url else author_icon_url
+                name=author_name or self.author_name,
+                url=author_url or self.author_url,
+                icon_url=author_icon_url or self.author_icon_url
             )
 
         fields_ac = []
@@ -97,7 +97,7 @@ class EmbedFactory:
             embed.add_field(
                 name=field.get('name'),
                 value=field.get('value'),
-                inline=field.get('inline') if field.get('inline') is not None else True
+                inline=field.get('inline', True)
             )
 
         return embed
