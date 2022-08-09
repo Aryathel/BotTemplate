@@ -7,6 +7,11 @@ from templates import decorators, checks, helpmenu, transformers
 from utils import LogType, Menu
 
 
+GITHUB_USER = "Aryathel"
+PROJECT_NAME = "BotTemplate"
+GITHUB_BASE = f"https://github.com/{GITHUB_USER}/{PROJECT_NAME}"
+
+
 class AdminCog(Cog, name='admin'):
     slash_commands = ['help', 'sync', 'source']
 
@@ -87,6 +92,10 @@ class AdminCog(Cog, name='admin'):
             interaction: Interaction,
             command: app_commands.Transform[Union[Cog, Group, Command], transformers.CommandTransformer] = None
     ) -> None:
+        if not command:
+            emb = self.bot.embeds.get(description=f"[Project Source Code]({GITHUB_BASE})")
+            await interaction.response.send_message(embed=emb)
+            return
         self.bot.log(command)
         await interaction.response.send_message("Not Yet Implemented", ephemeral=True)
 
