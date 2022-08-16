@@ -1,37 +1,22 @@
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-import discord
-
-from utils import Menu, MenuPage, EmbedFactory
 from ...bot import Interaction
+from .framework import ResourceMenu, ResourceMenuPage
 
 if TYPE_CHECKING:
     from apis.dnd5e.models.game_mechanics import DamageType
 
 
-class DamageTypeMenuPage(MenuPage):
-    def __init__(self, damage_type: 'DamageType', embed_factory: EmbedFactory) -> None:
-        self.damage_type = damage_type
-        self.embed_factory = embed_factory
+class DamageTypeMenuPage(ResourceMenuPage):
+    resource: 'DamageType'
 
-    def is_paginating(self) -> bool:
-        return False
-
-    def get_max_pages(self) -> int:
-        return 1
-
-    async def get_page(self, page_number: int) -> Any:
-        return None
-
-    async def format_page(self, menu: 'DamageTypeMenu', page: Any) -> discord.Embed:
-        return self.embed_factory.get(
-            title=self.damage_type.name,
-            url=self.damage_type.full_url,
-            description='\n\n'.join(self.damage_type.desc)
-        )
+    async def generate_pages(self, interaction: Interaction) -> None:
+        self.pages.append(self.embed_factory.get(
+            title=self.resource.name,
+            url=self.resource.full_url,
+            description='\n\n'.join(self.resource.desc)
+        ))
 
 
-class DamageTypeMenu(Menu):
-    def __init__(self, damage_type: 'DamageType', embed_factory: EmbedFactory, interaction: Interaction, ephemeral: bool = False) -> None:
-        page = DamageTypeMenuPage(damage_type=damage_type, embed_factory=embed_factory)
-        super().__init__(page=page, interaction=interaction, ephemeral=ephemeral)
+class DamageTypeMenu(ResourceMenu, page_type=DamageTypeMenuPage):
+    pass

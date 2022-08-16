@@ -11,17 +11,17 @@ if TYPE_CHECKING:
 @select_option(
     label="General",
     description="General {name} information.",
-    value="1"
+    value="background_general"
 )
 @select_option(
     label="Personality",
     description="Starting {name} personality traits.",
-    value="2"
+    value="background_personality"
 )
 @select_option(
     label="Equipment",
     description="Starting {name} equipment.",
-    value="3"
+    value="background_equipment"
 )
 class BackgroundMenuPageSelect(ResourceMenuPageSelect):
     pass

@@ -59,7 +59,7 @@ class Class(ResourceModel):
             ephemeral: bool = False
     ) -> dnd_resource_menus.ClassMenu:
         return dnd_resource_menus.ClassMenu(
-            class_=self,
+            resource=self,
             embed_factory=factory,
             interaction=interaction,
             ephemeral=ephemeral

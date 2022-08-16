@@ -1,69 +1,54 @@
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import discord
 
-from utils import Menu, MenuPage, EmbedFactory
-
 from ...bot import Interaction
+from .framework import ResourceMenu, ResourceMenuPage, ResourceMenuPageSelect, select_option
 
 if TYPE_CHECKING:
     from apis.dnd5e.models.class_ import Class
 
 
-class CLassMenuPageSelect(discord.ui.Select['DnDClassMenu']):
-    def __init__(self, class_: 'Class') -> None:
-        super().__init__(row=0, placeholder='Page Selection')
-        self.class_ = class_
-
-        self._populate()
-
-    def _populate(self) -> None:
-        self.add_option(
-            label="General",
-            description=f"General {self.class_.name} class information.",
-            value="1"
-        )
-        self.add_option(
-            label="Proficiencies",
-            description=f"{self.class_.name} starting and optional proficiencies.",
-            value="2"
-        )
-        self.add_option(
-            label="Equipment",
-            description=f"{self.class_.name} starting and option equipment.",
-            value="3"
-        )
-
-    async def callback(self, interaction: Interaction) -> None:
-        await self.view.set_page(int(self.values[0]), interaction)
+@select_option(
+    label="General",
+    description="General {name} class information.",
+    value="class_general"
+)
+@select_option(
+    label="Proficiencies",
+    description="{name} starting and optional proficiencies.",
+    value="class_proficiencies"
+)
+@select_option(
+    label="Equipment",
+    description="{name} starting and option equipment.",
+    value="class_equipment"
+)
+@select_option(
+    label="Class Info",
+    description="{name} subclasses and multi-classing information.",
+    value="class_classing"
+)
+class CLassMenuPageSelect(ResourceMenuPageSelect):
+    pass
 
 
-class ClassMenuPage(MenuPage):
-    index: int
-    pages: list[discord.Embed]
+class ClassMenuPage(ResourceMenuPage):
+    resource: 'Class'
 
-    def __init__(
-            self,
-            class_: 'Class',
-            embed_factory: EmbedFactory,
-    ) -> None:
-        self.class_ = class_
-        self.embed_factory = embed_factory.copy().update(title=self.class_.name, url=self.class_.full_url)
-
-    async def _generate_pages(self) -> None:
-        self.pages = []
+    async def generate_pages(self, interaction: Interaction) -> None:
         self.pages.append(self.embed_factory.get(
             author_name="General",
             fields=[
-                ("Hit Die", f"`d{self.class_.hit_die}`"),
-                ("Saving Throws", '\n'.join(f'`{t.name}`' for t in self.class_.saving_throws))
+                ("Hit Die", f"`d{self.resource.hit_die}`"),
+                ("Saving Throws", '\n'.join(f'`{t.name}`' for t in self.resource.saving_throws))
             ]
         ))
 
         fields = [
-            ("Starting Proficiencies", '\n'.join(f'`{p.name}`' for p in self.class_.proficiencies), False),
+            ("Starting Proficiencies", '\n'.join(f'`{p.name}`' for p in self.resource.proficiencies), False),
         ]
-        for prof_choice in self.class_.proficiency_choices:
+        for prof_choice in self.resource.proficiency_choices:
             fields.append((
                 f"Choose {prof_choice.choose}",
                 (f'> {prof_choice.desc}:\n' if hasattr(prof_choice, 'desc') else '') +
@@ -75,63 +60,60 @@ class ClassMenuPage(MenuPage):
         ))
 
         fields = [
-            ("Starting Equipment", '\n'.join(f'`{e.equipment.name} x{e.quantity}`' for e in self.class_.starting_equipment))
+            ("Starting Equipment", '\n'.join(f'`{e.equipment.name} x{e.quantity}`' for e in self.resource.starting_equipment))
         ]
-        for equip_choice in self.class_.starting_equipment_options:
+        for equip_choice in self.resource.starting_equipment_options:
+            opts_str = f'> {equip_choice.desc}:' if hasattr(equip_choice, 'desc') else ''
+            for opt in equip_choice.from_.options:
+                opt_str = await discord.utils.maybe_coroutine(opt.to_str, interaction)
+                opts_str += f'\n- `{opt_str}`'
+
             fields.append((
                 f"Choose {equip_choice.choose}",
-                (f'> {equip_choice.desc}:\n' if hasattr(equip_choice, 'desc') else '') +
-                '\n'.join(f'`{opt.item.name}`' for opt in equip_choice.from_.options)
+                opts_str
             ))
         self.pages.append(self.embed_factory.get(
             author_name="Equipment",
             fields=fields
         ))
 
+        fields = [
+            ("Subclasses", '\n'.join(f'`{s.name}`' for s in self.resource.subclasses)),
+        ]
+        if self.resource.multi_classing.prerequisites:
+            fields.append((
+                "Multiclassing Prerequisites",
+                '\n'.join(
+                    f'`{p.minimum_score} {p.ability_score.name}`' for p in self.resource.multi_classing.prerequisites
+                )
+            ))
+        if self.resource.multi_classing.proficiencies:
+            fields.append((
+                "Multi-classing Proficiencies",
+                '\n'.join(f'`{p.name}`' for p in self.resource.multi_classing.proficiencies)
+            ))
+        if self.resource.multi_classing.proficiency_choices:
+            value = ''
+            for choice in self.resource.multi_classing.proficiency_choices:
+                if value:
+                    value += '\n'
+                if choice.desc:
+                    value += f'> **Choose {choice.choose} {choice.desc.title()}:**\n'
+                else:
+                    value += f'> **Choose {choice.choose}:**\n'
+                value += ', '.join(f'`{ch.item.name}`' for ch in choice.from_.options)
+            fields.append((
+                "Multi-classing Proficiency Options",
+                value
+            ))
+
+        self.pages.append(self.embed_factory.get(
+            author_name="Class Info",
+            fields=fields
+        ))
+
         self._apply_page_numbers()
 
-    def _apply_page_numbers(self) -> None:
-        if self.is_paginating():
-            max_pages = self.get_max_pages()
-            for i, emb in enumerate(self.pages):
-                emb.title += f" [{i + 1}/{max_pages}]"
 
-    def is_paginating(self) -> bool:
-        return self.get_max_pages() > 1
-
-    def get_max_pages(self) -> int:
-        return len(self.pages)
-
-    def get_page(self, page_number: int) -> Any:
-        self.index = page_number
-
-    def format_page(self, menu: 'ClassMenu', page: Any) -> discord.Embed:
-        return self.pages[self.index-1]
-
-
-class ClassMenu(Menu):
-    pages: ClassMenuPage
-
-    def __init__(
-            self,
-            class_: 'Class',
-            embed_factory: EmbedFactory,
-            interaction: Interaction,
-            ephemeral: bool = False
-    ) -> None:
-        page = ClassMenuPage(class_=class_, embed_factory=embed_factory)
-        super().__init__(page=page, interaction=interaction, ephemeral=ephemeral, row=1)
-
-        self._add_select()
-
-    def _add_select(self) -> None:
-        self.clear_items()
-        self.add_item(CLassMenuPageSelect(self.pages.class_))
-        self.populate()
-
-    async def set_page(self, page_num: int, interaction: Interaction) -> None:
-        self.current_page = page_num
-        page = await self.pages.get_page(page_num)
-        response = await self._get_formatted_page_args(page)
-        self._update_buttons(page_num)
-        await interaction.response.edit_message(**response, view=self)
+class ClassMenu(ResourceMenu, page_type=ClassMenuPage, select_type=CLassMenuPageSelect):
+    pass

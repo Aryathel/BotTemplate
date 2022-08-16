@@ -1,3 +1,4 @@
+from collections import Mapping
 from typing import TYPE_CHECKING, Any, Optional, Type
 import abc
 
@@ -17,29 +18,31 @@ def select_option(label: str, description: str, value: str):
         if not hasattr(cls, 'options') or isinstance(getattr(cls, 'options'), property):
             cls.options = []
         cls.options.append((label, description, value))
-        cls.options = sorted(cls.options, key=lambda opt: opt[2])
         return cls
     return inner
 
 
 class ResourceMenuPageSelect(discord.ui.Select, abc.ABC):
-    options: list[tuple[str, str, str]] = []
+    options: list[tuple[str, str, str]]
+    value_mapping: Mapping[str, int]
 
     def __init__(self, resource: 'ResourceModel') -> None:
         super().__init__(row=0, placeholder='Page Selection')
         self.resource = resource
 
-        if not self.options:
+        if not hasattr(self, 'options') or not self.options:
             raise AttributeError("At least one option must be specified.")
 
         opts = []
-        for opt in self.options:
+        self.value_mapping = {}
+        for i, opt in enumerate(reversed(self.options)):
             if not len(opt) == 3:
                 raise IndexError("SelectMenu options must have 3 elements.")
             name, desc, value = opt
             if hasattr(self.resource, 'name'):
                 desc = desc.format(name=self.resource.name)
             opts.append((name, desc, value))
+            self.value_mapping[value] = i+1
 
         self.options = opts
 
@@ -54,7 +57,7 @@ class ResourceMenuPageSelect(discord.ui.Select, abc.ABC):
             )
 
     async def callback(self, interaction: Interaction) -> None:
-        await self.view.set_page(int(self.values[0]), interaction)
+        await self.view.set_page(self.value_mapping.get(self.values[0], 1), interaction)
 
 
 class ResourceMenuPage(MenuPage, abc.ABC):

@@ -11,6 +11,7 @@ from .framework import APIModel
 
 if TYPE_CHECKING:
     from templates import Interaction
+    from .equipment import EquipmentCategory
 
 
 # Option typing
@@ -144,11 +145,12 @@ class OptionChoice(Option):
 
     async def to_str(self, interaction: 'Interaction') -> str:
         if self.choice.type == 'equipment':
-            if self.choice.from_.option_set_type == 'equipment_category':
-                choices = await interaction.client.dnd_client.lookup(
+            if isinstance(self.choice.from_, OptionSetEquipmentCategory):
+                choices: 'EquipmentCategory'
+                choices, _ = await interaction.client.dnd_client.lookup(
                     (self.choice.from_.equipment_category, 'equipment-categories')
                 )
-                return f"Choose {self.choice.choose} from {self.choice.from_}"
+                return f"Choose {self.choice.choose} from {', '.join(ch.name for ch in choices.equipment)}"
         raise NotImplementedError
 
 
@@ -169,7 +171,7 @@ class OptionCountedReference(Option):
     of: APIReference
     prerequisites: Optional[list[OptionPrerequisite]] = field(default=None)
 
-    def to_str(self) -> str:
+    def to_str(self, interaction: 'Interaction') -> str:
         return f"{self.of.name} x{self.count}"
 
 
@@ -207,6 +209,9 @@ class OptionSet(APIModel):
 class OptionSetOptionsArray(OptionSet):
     options: list[OptionT]
 
+    def to_str(self, interaction: 'Interaction') -> str:
+        return ', '.join(opt.to_str(interaction=interaction) for opt in self.options)
+
 
 @dataclass
 class OptionSetEquipmentCategory(OptionSet):
@@ -224,6 +229,10 @@ class Choice(APIModel):
     type: str
     from_: OptionSetT
     desc: Optional[str] = field(default=None)
+
+    def to_str(self, interaction: 'Interaction') -> str:
+        if isinstance(self.from_, OptionSetOptionsArray):
+            return f'Choose {self.choose} from {self.from_.to_str(interaction=interaction)}'
 
 
 # ---------- Schemas ----------

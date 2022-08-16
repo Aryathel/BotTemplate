@@ -24,7 +24,7 @@ class Condition(ResourceModel):
             ephemeral: bool = False
     ) -> dnd_resource_menus.ConditionMenu:
         return dnd_resource_menus.ConditionMenu(
-            condition=self,
+            resource=self,
             embed_factory=factory,
             interaction=interaction,
             ephemeral=ephemeral,
@@ -45,7 +45,7 @@ class DamageType(ResourceModel):
             ephemeral: bool = False
     ) -> dnd_resource_menus.DamageTypeMenu:
         return dnd_resource_menus.DamageTypeMenu(
-            damage_type=self,
+            resource=self,
             embed_factory=factory,
             interaction=interaction,
             ephemeral=ephemeral
