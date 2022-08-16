@@ -1,5 +1,6 @@
+from collections import Mapping
 from datetime import timedelta
-from typing import Union, List, Any, Optional, TYPE_CHECKING
+from typing import Union, List, Any, Optional, TYPE_CHECKING, Tuple
 
 import discord
 import tweepy
@@ -7,12 +8,15 @@ from discord import app_commands
 from discord.ext import commands
 import emoji
 
+from apis.dnd5e.models import APIReferenceList
+from apis.dnd5e.models.general import APIReference
 from utils import tdelta_from_str, clamp, str_from_tdelta
+
 from ..bot import Interaction, Cog
 from ..commands import Command, Group
 from ..types import AppCommandOptionType, COLORS, RGB_PATTERN, PERMISSION_FLAGS, \
     C_EMOJI_PATTERN, Emoji, Permission, USER_MENTION_PATTERN, Message, TWITTER_USER_PATTERN, \
-    TwitterUserField
+    TwitterUserField, DiceRoll
 from ..errors import TransformerError
 
 if TYPE_CHECKING:
@@ -430,3 +434,111 @@ class TwitterMonitorTransformer(app_commands.Transformer):
                 pass
 
         return choices
+
+
+# ---------- Dungeons & Dragons Transformers ----------
+class DiceRollTransformer(app_commands.Transformer):
+    @classmethod
+    async def transform(cls, interaction: Interaction, value: str) -> Union[list[DiceRoll], DiceRoll]:
+        try:
+            return DiceRoll.from_query(value)
+        except Exception:
+            raise TransformerError(
+                value=value,
+                opt_type=AppCommandOptionType.dnd_roll,
+                transformer=DiceRollTransformer
+            )
+
+    @classmethod
+    async def autocomplete(
+        cls, interaction: Interaction, value: str
+    ) -> List[app_commands.Choice[str]]:
+        if value:
+            try:
+                rolls = DiceRoll.from_query(value)
+            except Exception:
+                raise TransformerError(
+                    value=value,
+                    opt_type=AppCommandOptionType.dnd_roll,
+                    transformer=DiceRollTransformer
+                )
+
+            if rolls:
+                if isinstance(rolls, list):
+                    query = ' '.join(r.query for r in rolls)
+                    choices = [app_commands.Choice(name=query, value=query)]
+                else:
+                    choices = [app_commands.Choice(name=rolls.query, value=rolls.query)]
+                return choices
+
+        return []
+
+
+class DnDResourceTransformer(app_commands.Transformer):
+    @classmethod
+    async def transform(cls, interaction: Interaction, value: str) -> str:
+        resource = interaction.client.dnd_client.endpoints.get(value, None)
+        if not resource:
+            raise TransformerError(
+                value=value,
+                opt_type=AppCommandOptionType.dnd_resource,
+                transformer=DnDResourceTransformer
+            )
+
+        return value
+
+    @classmethod
+    async def autocomplete(
+        cls, interaction: Interaction, value: str
+    ) -> List[app_commands.Choice[str]]:
+        opts = []
+        for name in interaction.client.dnd_client.endpoints.keys():
+            if value.lower() in name.lower().replace('-', ' '):
+                opts.append(app_commands.Choice(name=name.replace('-', ' ').title(), value=name))
+            if len(opts) >= 25:
+                break
+
+        return opts
+
+
+class DnDResourceLookupTransformer(app_commands.Transformer):
+    @classmethod
+    async def transform(cls, interaction: Interaction, value: str) -> Tuple[APIReference, str]:
+        err = TransformerError(
+            value=f'{interaction.namespace.endpoint}: {value}',
+            opt_type=AppCommandOptionType.dnd_resource_lookup,
+            transformer=DnDResourceLookupTransformer
+        )
+
+        if not value or not interaction.namespace.endpoint:
+            raise err
+        ref = interaction.client.dnd_client.resource_cache.get(interaction.namespace.endpoint, {}).get(value)
+        if not ref:
+            raise err
+
+        return ref
+
+    @classmethod
+    async def autocomplete(
+        cls, interaction: Interaction, value: str
+    ) -> List[app_commands.Choice[str]]:
+        # Ensure that the endpoint argument has a value.
+        if not interaction.namespace.endpoint:
+            return []
+
+        # Get the list of resource for the endpoint.
+        refs: Mapping[str, Tuple[APIReference, str]] = interaction.client.dnd_client.resource_cache.get(interaction.namespace.endpoint)
+        if not refs:
+            return []
+
+        # Create the choices from the resource list.
+        opts = []
+
+        for ref in refs.values():
+            ref = ref[0]
+            if value.lower() in ref.name.lower():
+                opts.append(app_commands.Choice(name=ref.name, value=ref.index))
+            if len(opts) >= 25:
+                break
+
+        return opts

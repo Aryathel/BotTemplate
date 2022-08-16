@@ -1,5 +1,7 @@
 __pycache__
 .idea
+cache
+
 .env
 Pipfile
 Pipfile.lock

@@ -1,5 +1,6 @@
 import re
 from enum import Enum, Flag, auto
+import random
 from typing import Optional, NamedTuple, List, Dict, Callable, TYPE_CHECKING, Union, Tuple
 
 import discord
@@ -197,6 +198,9 @@ class AppCommandOptionType(Enum):
     message = 17
     twitter_user = 18
     twitter_monitor = 19
+    dnd_roll = 20
+    dnd_resource = 21
+    dnd_resource_lookup = 22
 
 
 # ---------- Role Sort Options ----------
@@ -305,3 +309,141 @@ class Message:
         if self.role_reaction_msg:
             return True
         return False
+
+
+# ---------- D&D Types ----------
+# The pattern for parsing dice rolls from a string.
+DICE_ROLL_PATTERN = re.compile(
+    r"(?P<num_die>\d+)?d(?P<num_sides>\d+)(?:\s?kh\s?(?P<kh>\d+)|\s?kl\s?(?P<kl>\d+))?(?:\s?\+\s?(?P<add>\d+)|\s?-\s?(?P<sub>\d+))?",
+    re.IGNORECASE
+)
+
+
+class DiceRoll:
+    num_sides: int
+    num_dice: int
+    keep_highest: int
+    keep_lowest: int
+    add: int
+    subtract: int
+
+    value: int = None
+    rolls: list[int] = None
+    rolls_kept: Optional[list[int]] = None
+
+    __defaults__ = [
+        1,
+        None,
+        0,
+        0,
+        0,
+        0,
+    ]
+
+    def __init__(
+            self,
+            num_sides: int,
+            num_dice: int = 1,
+            keep_highest: int = 0,
+            keep_lowest: int = 0,
+            add: int = 0,
+            subtract: int = 0
+    ):
+        # Safety checks
+        if num_sides < 2:
+            raise ValueError("num_sides cannot be less than 2.")
+        elif num_dice < 1:
+            raise ValueError("num_dice cannot be less than 1.")
+
+        elif keep_lowest and keep_lowest:
+            raise ValueError("keep_highest and keep_lowest cannot be defined together, only one or the other.")
+        elif keep_highest > num_dice or keep_highest < 0:
+            raise ValueError("keep_highest must be between 0 and the number of dice rolled.")
+        elif keep_lowest > num_dice or keep_lowest < 0:
+            raise ValueError("keep_lowest must be between 0 and the number of dice rolled.")
+
+        self.num_sides = num_sides
+        self.num_dice = num_dice
+
+        self.keep_highest = keep_highest
+        self.keep_lowest = keep_lowest
+
+        self.add = add
+        self.subtract = subtract
+
+    def __str__(self) -> str:
+        return f'<DiceRoll value={self.value} query="{self.query}" rolls={self.rolls}>'
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+    def roll(self) -> None:
+        self.value, self.rolls, self.rolls_kept = self._roll()
+
+    def _roll(self) -> Tuple[int, list[int], list[int]]:
+        # Roll all of the dice.
+        rolls = sorted([random.randint(1, self.num_sides) for i in range(self.num_dice)])
+
+        # Handle keeping the highest/lowest rolls.
+        rolls_kept = None
+        if self.keep_highest:
+            rolls_kept = rolls[-self.keep_highest:]
+        elif self.keep_lowest:
+            rolls_kept = rolls[:self.keep_lowest]
+
+        # Get a preliminary total from the rolls.
+        if rolls_kept:
+            sub_total = sum(rolls_kept)
+        else:
+            sub_total = sum(rolls)
+
+        # Handle adding/subtracting remaining constants
+        total = sub_total
+        if self.add:
+            total += self.add
+        if self.subtract:
+            total -= self.subtract
+
+        return total, rolls, rolls_kept
+
+    @property
+    def query(self) -> str:
+        res = f"{self.num_dice}d{self.num_sides}"
+        if self.keep_highest:
+            res += f' kh{self.keep_highest}'
+        elif self.keep_lowest:
+            res += f' kl{self.keep_lowest}'
+        if self.add:
+            res += f' +{self.add}'
+        if self.subtract:
+            res += f' -{self.subtract}'
+        return res
+
+    @classmethod
+    def from_query(cls, query: str) -> Union[list['DiceRoll'], 'DiceRoll']:
+        matches = DICE_ROLL_PATTERN.findall(query)
+        rolls = []
+        for roll in matches:
+            roll = list(roll)
+            try:
+                for i, v in enumerate(roll):
+                    if not v:
+                        roll[i] = cls.__defaults__[i]
+                    else:
+                        roll[i] = int(v)
+            except ValueError:
+                raise ValueError("Not all matched values are integers.")
+
+            dice_roll = DiceRoll(
+                num_sides=roll[1],
+                num_dice=roll[0],
+                keep_highest=roll[2],
+                keep_lowest=roll[3],
+                add=roll[4],
+                subtract=roll[5]
+            )
+            rolls.append(dice_roll)
+
+        if len(rolls) == 1:
+            return rolls[0]
+        return rolls

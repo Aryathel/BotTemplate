@@ -37,16 +37,20 @@ class MenuPageList(MenuPage):
             factory: EmbedFactory,
             items: List[Any],
             title: str,
+            url: str = None,
             per_page: int = 25,
             show_page: bool = True,
-            number_items: bool = False
+            number_items: bool = False,
+            code: bool = True
     ):
         self.factory = factory
         self.items = items
         self.per_page = clamp(per_page, min_val=1)
         self.title = title
+        self.url = url
         self.show_page = show_page
         self.number_items = number_items
+        self.code = code
 
     def is_paginating(self) -> bool:
         return len(self.items) > self.per_page
@@ -65,7 +69,8 @@ class MenuPageList(MenuPage):
         return self.factory.get(
             title=f'{self.title}' +
                   (f' [{self.index}/{self.get_max_pages()}]' if self.is_paginating() and self.show_page else ''),
-            description='\n'.join(f'`{i+1+start}:` {e}' for i, e in enumerate(entries)) if self.number_items else '\n'.join(entries)
+            description='\n'.join(f'`{i+1+start}:` {"`" if self.code else ""}{e}{"`" if self.code else ""}' for i, e in enumerate(entries)) if self.number_items else '\n'.join(entries),
+            url=self.url
         )
 
     def get_list_frame(self, start: int) -> Optional[List[Any]]:
@@ -83,12 +88,15 @@ class MenuCategory:
 
 
 class Menu(discord.ui.View):
+    target: Optional[discord.abc.Messageable] = None
+
     def __init__(
             self,
             page: MenuPage,
             interaction: discord.Interaction,
             row: int = 0,
             delete_on_quit: bool = True,
+            delete_on_timeout: bool = True,
             ephemeral: bool = False
     ):
         super().__init__()
@@ -98,13 +106,14 @@ class Menu(discord.ui.View):
         self.current_page: int = 1
         self.row: int = row
         self.message: Optional[discord.Message] = None
+        self.delete_on_timeout = delete_on_timeout
         self.delete_on_quit = delete_on_quit
         self.ephemeral = ephemeral
 
         self.clear_items()
         self.populate()
 
-    async def _get_formatted_page_args(self, page: int) -> Dict[str, Any]:
+    async def _get_formatted_page_args(self, page: Any) -> Dict[str, Any]:
         res = await discord.utils.maybe_coroutine(self.pages.format_page, self, page)
         if isinstance(res, dict):
             return res
@@ -134,19 +143,20 @@ class Menu(discord.ui.View):
         if self.pages.is_paginating():
             max_pages = self.pages.get_max_pages()
             if max_pages is not None:
-                self.add_item(self.go_first)
+                if max_pages > 2:
+                    self.add_item(self.go_first)
                 self.add_item(self.go_back)
                 self.add_item(self.go_next)
-                self.add_item(self.go_last)
+                if max_pages > 2:
+                    self.add_item(self.go_last)
                 if not self.ephemeral:
                     self.add_item(self.quit)
 
     async def show_page(self, interaction: discord.Interaction, page_num: int) -> None:
-        page = await self.pages.get_page(page_num)
+        page = await discord.utils.maybe_coroutine(self.pages.get_page, page_num)
         self.current_page = page_num
 
         self._update_buttons(page_num)
-
         response = await self._get_formatted_page_args(page)
         if response:
             if interaction.response.is_done():
@@ -168,25 +178,51 @@ class Menu(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user and interaction.user.id == self.interaction.user.id:
             return True
+        if self.target:
+            if isinstance(self.target, discord.abc.User):
+                if self.target.id == interaction.user.id:
+                    return True
+
         await interaction.response.send_message('Sorry, you cannot control this menu!', ephemeral=True)
         return False
 
     async def on_timeout(self) -> None:
         if self.interaction:
-            await self.interaction.edit_original_message(view=None)
+            if self.delete_on_timeout:
+                await self.interaction.delete_original_message()
+            else:
+                await self.interaction.edit_original_message(view=None)
 
     async def start(self, content: Optional[str] = None) -> None:
         if not self.interaction.channel.permissions_for(self.interaction.guild.me).embed_links:
             await self.interaction.response.send_message('I cannot send embedded messages here!', ephemeral=True)
             return
 
-        page = await self.pages.get_page(1)
+        page = await discord.utils.maybe_coroutine(self.pages.get_page, 1)
         response = await self._get_formatted_page_args(page)
         if content:
             response.setdefault('content', content)
 
         self._update_buttons(1)
         await self.interaction.response.send_message(**response, view=self, ephemeral=self.ephemeral)
+
+    async def send(self, target: discord.abc.Messageable, content: Optional[str] = None) -> None:
+        self.target = target
+
+        if not self.interaction.channel.permissions_for(self.interaction.guild.me).embed_links:
+            await self.interaction.response.send_message('I cannot send embedded messages here!', ephemeral=True)
+            return
+
+        page = page = await discord.utils.maybe_coroutine(self.pages.get_page, 1)
+        response = await self._get_formatted_page_args(page)
+        if content:
+            response.setdefault('content', content)
+
+        self._update_buttons(1)
+        try:
+            await target.send(**response, view=self)
+        except discord.Forbidden or discord.HTTPException:
+            pass
 
     @discord.ui.button(label='⋘', style=discord.ButtonStyle.grey)
     async def go_first(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:

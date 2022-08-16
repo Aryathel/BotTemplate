@@ -203,13 +203,17 @@ class TwitterCog(GroupCog, group_name='twitter', name="twitter"):
 
     monitors: list[TwitterMonitor]
 
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, bot: Bot, bearer_token: str) -> None:
+        super().__init__(bot)
 
-        twitter_bearer_token = os.environ.get('TWITTER_BEARER_TOKEN')
-        self.stream = AsyncStreamingClient(twitter_bearer_token, self.bot, wait_on_rate_limit=True)
+        if not bearer_token:
+            raise ValueError(
+                f'Missing Twitter bearer token. Passed via `cog_params` as `{self.name}` -> `bearer_token`.'
+            )
+
+        self.stream = AsyncStreamingClient(bearer_token, self.bot, wait_on_rate_limit=True)
         self.bot.twitter = tweepy.asynchronous.AsyncClient(
-            bearer_token=twitter_bearer_token,
+            bearer_token=bearer_token,
             wait_on_rate_limit=True
         )
 
@@ -448,4 +452,10 @@ class TwitterCog(GroupCog, group_name='twitter', name="twitter"):
 
 
 async def setup(bot: Bot) -> None:
-    await bot.add_cog(TwitterCog(bot), guilds=[bot.GUILD])
+    cog_params = bot.COG_PARAMS.get(TwitterCog.name, None)
+    if cog_params:
+        bearer_token = cog_params.get('bearer_token', None)
+    else:
+        bearer_token = None
+
+    await bot.add_cog(TwitterCog(bot, bearer_token), guilds=[bot.GUILD])

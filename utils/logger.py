@@ -110,12 +110,12 @@ class LogType(Enum):
 
     These types are then used to control the color of the log as it is printed to the terminal.
     """
-    normal = 1
-    ok = 2
-    warning = 3
-    error = 4
-    debug = 5
-    twitter = 6
+    normal = 'normal'
+    ok = 'ok'
+    warning = 'warning'
+    error = 'error'
+    debug = 'debug'
+    twitter = 'twitter'
 
 
 def log(msg: str = "", /, rel: int = 2, end: str = ''):

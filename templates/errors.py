@@ -28,9 +28,21 @@ class TransformerError(app_commands.AppCommandError):
 
 
 # ---------- Twitter Error ----------
-class TwitterError(BaseException):
+class TwitterError(Exception):
     def __init__(self, status_code: int) -> None:
         name, message = TWITTER_HTTP_ERRORS.get(status_code, ("Unknown Error", "An unknown Twitter error occurred."))
         msg = f"{status_code} {name.upper()}: {message}"
 
         super().__init__(msg)
+
+
+# ---------- DnD Errors ----------
+class SchemaError(Exception):
+    def __init__(self, *, endpoint: str = None, index: str = None) -> None:
+        if endpoint:
+            if index:
+                super().__init__(f'No schema for `{index}` response at endpoint `{endpoint}`')
+            else:
+                super().__init__(f"No response schema found for endpoint `{endpoint}`")
+        elif index:
+            super().__init__(f"No schema found for index `{index}`")

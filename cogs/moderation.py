@@ -24,10 +24,10 @@ from templates import Bot, Cog, Interaction
 from templates import decorators, transformers
 from utils import LogType, clamp, Menu, MenuPageList
 
-from .groups.role import Role
-from .groups.warn import Warn
-from .groups.reactionrole import ReactionRole
-from .groups.embeds import Embeds
+from .groups.moderation.role import Role
+from .groups.moderation.warn import Warn
+from .groups.moderation.reactionrole import ReactionRole
+from .groups.moderation.embeds import Embeds
 
 
 # ---------- Autocompletion functions. ----------

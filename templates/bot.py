@@ -17,6 +17,7 @@ from .errors import TransformerError
 
 if TYPE_CHECKING:
     from tweepy.asynchronous import AsyncClient
+    from apis.dnd5e import DnD5e
 
 BotType = TypeVar('BotType', bound='Bot')
 
@@ -36,7 +37,7 @@ class Cog(commands.Cog):
     name: str
     description: str
     icon: str
-    slash_commands: List[Union[str, Group, 'GroupCog']]
+    slash_commands: List[Union[str, Group, 'GroupCog']] = []
     help: str = None
     nested: bool = False
 
@@ -87,7 +88,7 @@ class Cog(commands.Cog):
                 parent.add_command(command)  # type: ignore
 
             if hasattr(command, '__commands_is_hybrid__') and parent is None:
-                app_command: Optional[Union[app_commands.Group, app_commands.Command[Self, ..., Any]]] = getattr(
+                app_command: Optional[Union[app_commands.Group, app_commands.Command[..., ..., Any]]] = getattr(
                     command, 'app_command', None
                 )
                 if app_command:
@@ -122,7 +123,7 @@ class Cog(commands.Cog):
     def __init__(self, bot: BotType):
         self.bot = bot
 
-    def cog_load(self) -> None:
+    async def cog_load(self) -> None:
         if self.nested:
             return
 
@@ -153,7 +154,7 @@ class Cog(commands.Cog):
                 self.bot.log(f'{c} added', nest=2)
         self.bot.log(f'{self.qualified_name} loaded.', nest=1)
 
-    def cog_unload(self) -> None:
+    async def cog_unload(self) -> None:
         if self.nested:
             return
 
@@ -308,6 +309,8 @@ class Bot(commands.Bot):
     twitter: Optional['AsyncClient']
     twitter_monitors: Optional[list[TwitterMonitor]]
 
+    dnd_client: Optional['DnD5e']
+
     def __init__(
             self,
             command_prefix: str,
@@ -321,7 +324,9 @@ class Bot(commands.Bot):
             db_user: str,
             db_pass: str,
             tree_cls: Type[app_commands.CommandTree] = CommandTree,
-            embed_factory: EmbedFactory = EmbedFactory()
+            embed_factory: EmbedFactory = EmbedFactory(),
+            cogs: list[str] = None,
+            cog_params: dict[str, dict[str, str]] = None,
     ) -> None:
         intents = Intents.default()
         intents.update(
@@ -331,12 +336,8 @@ class Bot(commands.Bot):
         )
 
         # Register internal constants
-        self.COGS = [
-            "cogs.admin",
-            "cogs.misc",
-            "cogs.moderation",
-            "cogs.twitter",
-        ]
+        self.COGS = cogs or []
+        self.COG_PARAMS = cog_params or {}
         self.TOKEN = token
         self.GUILD = guild
         self.OWNER_ID = owner_id
@@ -423,7 +424,7 @@ class Bot(commands.Bot):
             return
 
     @staticmethod
-    def log(*args, log_type: LogType = LogType.normal, divider: bool = False,
+    def log(*args, log_type: Union[LogType, str] = LogType.normal, divider: bool = False,
             urgent: Optional[bool] = None, error: Optional[BaseException] = None,
             rel: int = 2, separator: str = ' ', nest: int = 0) -> None:
         separator = separator if type(separator) == str else ' '
@@ -431,6 +432,9 @@ class Bot(commands.Bot):
         msg = separator.join(str(arg) for arg in args)
         if urgent:
             color.black(bg=True)
+
+        if isinstance(log_type, str):
+            log_type = LogType(log_type)
 
         if log_type == LogType.ok:
             if urgent:
@@ -450,6 +454,7 @@ class Bot(commands.Bot):
         elif log_type == LogType.debug:
             if urgent:
                 color.magenta(bg=True)
+                color.black()
             else:
                 color.magenta()
         elif log_type == LogType.twitter:
@@ -476,6 +481,22 @@ class Bot(commands.Bot):
     @classmethod
     def debug(cls, *args, **kwargs) -> None:
         cls.log('DEBUG:', *args, **kwargs, log_type=LogType.debug, rel=3)
+
+    @classmethod
+    def info(cls, *args, **kwargs) -> None:
+        cls.log('INFO:', *args, **kwargs, rel=3)
+
+    @classmethod
+    def ok(cls, *args, **kwargs) -> None:
+        cls.log('OK:', *args, **kwargs, log_type=LogType.ok, rel=3)
+
+    @classmethod
+    def warning(cls, *args, **kwargs) -> None:
+        cls.log('WARNING:', *args, **kwargs, log_type=LogType.warning, rel=3)
+
+    @classmethod
+    def error(cls, *args, **kwargs) -> None:
+        cls.log('ERROR:', *args, **kwargs, rel=3, log_type=LogType.error)
 
     @property
     def cog_names(self) -> List[str]:

@@ -5,7 +5,7 @@ from copy import deepcopy
 import discord
 
 
-FactoryType = TypeVar('FactoryType', bound='EmbedFactory')
+EmbedFieldT = Union['EmbedField', tuple[str, str, bool], tuple[str, str]]
 
 
 class EmbedField(TypedDict):
@@ -33,7 +33,7 @@ class EmbedFactory:
             author_name: Optional[Any] = None, author_url: Optional[Any] = None,
             author_icon_url: Optional[Any] = None, footer: Optional[Any] = None,
             footer_icon: Optional[Any] = None, image: Optional[Any] = None,
-            thumbnail: Optional[Any] = None, fields: list[EmbedField] = None
+            thumbnail: Optional[Any] = None, fields: list[EmbedFieldT] = None
     ):
         self.color = color
         self.title = title
@@ -49,7 +49,7 @@ class EmbedFactory:
         self.thumbnail = thumbnail
         self.fields = fields
 
-    def copy(self) -> FactoryType:
+    def copy(self) -> 'EmbedFactory':
         return deepcopy(self)
 
     def get(self, color: Optional[Union[int, discord.Color]] = None,
@@ -58,7 +58,7 @@ class EmbedFactory:
             author_name: Optional[Any] = None, author_url: Optional[Any] = None,
             author_icon_url: Optional[Any] = None, footer: Optional[Any] = None,
             footer_icon: Optional[Any] = None, image: Optional[Any] = None,
-            thumbnail: Optional[Any] = None, fields: list[EmbedField] = None) -> discord.Embed:
+            thumbnail: Optional[Any] = None, fields: list[EmbedFieldT] = None) -> discord.Embed:
         embed = discord.Embed()
 
         # Setting the embed field values to be the given values if they exist,
@@ -94,11 +94,22 @@ class EmbedFactory:
             fields_ac = self.fields
 
         for field in fields_ac:
-            embed.add_field(
-                name=field.get('name'),
-                value=field.get('value'),
-                inline=field.get('inline', True)
-            )
+            if isinstance(field, dict):
+                embed.add_field(
+                    name=field.get('name'),
+                    value=field.get('value'),
+                    inline=field.get('inline', True)
+                )
+            elif isinstance(field, tuple):
+                if len(field) < 3:
+                    inline = True
+                else:
+                    inline = bool(field[2])
+                embed.add_field(
+                    name=field[0],
+                    value=field[1],
+                    inline=inline
+                )
 
         return embed
 
@@ -111,7 +122,7 @@ class EmbedFactory:
             author_icon_url: Optional[Any] = None, footer: Optional[Any] = None,
             footer_icon: Optional[Any] = None, image: Optional[Any] = None,
             thumbnail: Optional[Any] = None, fields: list[EmbedField] = None
-    ) -> FactoryType:
+    ) -> 'EmbedFactory':
         self.color = color or self.color
         self.title = title or self.title
         self.url = url or self.url

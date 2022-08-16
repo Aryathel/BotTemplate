@@ -87,7 +87,7 @@ class HelpMenuCommand(MenuPage):
     def get_max_pages(self) -> Optional[int]:
         return None
 
-    async def get_page(self, page_num: int) -> Any:
+    async def get_page(self, page_num: int) -> 'HelpMenuCommand':
         self.index = page_num
         return self
 
