@@ -1,6 +1,5 @@
-from collections import Mapping
 from datetime import timedelta
-from typing import Union, List, Any, Optional, TYPE_CHECKING, Tuple
+from typing import Union, List, Any, Optional, TYPE_CHECKING, Tuple, Mapping
 
 import discord
 import tweepy

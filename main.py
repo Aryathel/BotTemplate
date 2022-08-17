@@ -2,6 +2,7 @@ import os
 import logging
 
 import discord
+import dotenv
 
 from templates import Bot
 from utils import EmbedFactory
@@ -9,6 +10,7 @@ from utils import EmbedFactory
 
 logging.basicConfig(level=logging.INFO)
 
+dotenv.load_dotenv()
 
 if __name__ == "__main__":
     cogs = ['cogs.admin']

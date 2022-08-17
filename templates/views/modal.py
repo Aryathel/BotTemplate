@@ -1,5 +1,4 @@
-from typing import Optional
-from collections.abc import Callable, Awaitable
+from typing import Optional, Callable, Awaitable
 
 from discord.ui import Modal as DiscordModal
 from discord.utils import MISSING
@@ -8,11 +7,11 @@ from ..bot import Interaction
 
 
 class Modal(DiscordModal):
-    callback: Optional[Callable[None, Awaitable[None]]]
+    callback: Optional[Callable[..., Awaitable[None]]]
 
     def __init__(
             self,
-            callback: Optional[Callable[None, Awaitable[None]]] = None,
+            callback: Optional[Callable[..., Awaitable[None]]] = None,
             *,
             title: str = MISSING,
             timeout: Optional[float] = None,

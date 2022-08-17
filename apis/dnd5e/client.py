@@ -1,5 +1,4 @@
-from collections import Mapping
-from typing import Tuple
+from typing import Tuple, Mapping
 
 import aiohttp_client_cache
 from marshmallow import ValidationError

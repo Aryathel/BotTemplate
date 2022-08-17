@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from collections import Mapping
-from typing import Optional, Union
+from typing import Optional, Union, Mapping
 
 from marshmallow import Schema, fields, post_load
 from marshmallow_enum import EnumField

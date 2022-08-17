@@ -1,5 +1,4 @@
-from collections import Mapping
-from typing import Union, cast, Tuple
+from typing import Union, cast, Tuple, Mapping
 
 import aiohttp
 import discord

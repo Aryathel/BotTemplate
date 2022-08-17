@@ -1,6 +1,4 @@
-from typing import Optional
-from collections.abc import Awaitable, Callable
-import os
+from typing import Optional, Callable, Awaitable
 
 import discord
 from discord import ui
@@ -46,7 +44,7 @@ class CreateEmbedMessage(Modal, title="Create Embed Message"):
 
     def __init__(
             self,
-            callback: Optional[Callable[None, Awaitable[None]]] = None,
+            callback: Optional[Callable[..., Awaitable[None]]] = None,
             *,
             color: discord.Color = None,
             channel: discord.TextChannel = None,

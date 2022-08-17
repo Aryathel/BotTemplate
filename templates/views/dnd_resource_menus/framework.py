@@ -1,5 +1,4 @@
-from collections import Mapping
-from typing import TYPE_CHECKING, Any, Optional, Type
+from typing import TYPE_CHECKING, Any, Optional, Type, Mapping
 import abc
 
 import discord
