@@ -16,10 +16,7 @@ Environment Settings
 
 The project is currently configured to use a ``.env`` file for configuring the environment.
 By creating the ``.env`` file in the root of the project, you can
-use the following format to configure the program.
-
-..code-block::
-    :caption: ``.env`` file format
+use the following format to configure the program::
 
     # Discord Bot Settings
     BOT_TOKEN=your_bot_token
