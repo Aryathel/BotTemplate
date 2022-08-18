@@ -103,8 +103,11 @@ class DnDCog(GroupCog, group_name="dnd", name="dungeons&dragons"):
 
             try:
                 await res.to_menu(interaction, self.embeds).start()
-            except NotImplementedError:
-                emb = self.bot.embeds.get(description=f"Display not yet implemented for endpoint `{endpoint.replace('-', ' ').title()}`.")
+            except NotImplementedError as e:
+                raise e
+                emb = self.bot.embeds.get(
+                    description=f"Display not yet implemented for endpoint `{endpoint.replace('-', ' ').title()}`."
+                )
                 await interaction.response.send_message(embed=emb, ephemeral=True)
 
     @decorators.command(

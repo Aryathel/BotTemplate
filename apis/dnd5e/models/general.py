@@ -3,6 +3,7 @@ from enum import Enum
 from dataclasses import dataclass, field
 from typing import Union, TypeVar, Optional, TYPE_CHECKING
 
+import discord
 from marshmallow import Schema, fields, post_load
 from marshmallow_enum import EnumField
 from marshmallow_oneofschema import OneOfSchema
@@ -138,6 +139,12 @@ class OptionMultiple(Option):
     items_: list[OptionT]
     desc: Optional[str] = field(default=None)
 
+    async def to_str(self, interaction: 'Interaction') -> str:
+        return ', '.join(
+            [await discord.utils.maybe_coroutine(i.to_str, interaction) for i in self.items_[:-1]] +
+            ['and ' + await discord.utils.maybe_coroutine(self.items_[-1].to_str, interaction)]
+        )
+
 
 @dataclass
 class OptionChoice(Option):
@@ -180,6 +187,9 @@ class OptionScorePrerequisite(Option):
     ability_score: APIReference
     minimum_score: int
 
+    def to_str(self, interaction: 'Interaction') -> str:
+        return f'{self.minimum_score} {self.ability_score.name}'
+
 
 @dataclass
 class AbilityBonus(Option):
@@ -217,6 +227,11 @@ class OptionSetOptionsArray(OptionSet):
 class OptionSetEquipmentCategory(OptionSet):
     equipment_category: APIReference
 
+    async def to_str(self, interaction: 'Interaction') -> str:
+        category: EquipmentCategory
+        category, _ = await interaction.client.dnd_client.lookup((self.equipment_category, 'equipment-categories'))
+        return ', '.join(c.name for c in category.equipment)
+
 
 @dataclass
 class OptionSetResourceList(OptionSet):
@@ -230,9 +245,14 @@ class Choice(APIModel):
     from_: OptionSetT
     desc: Optional[str] = field(default=None)
 
-    def to_str(self, interaction: 'Interaction') -> str:
+    async def to_str(self, interaction: 'Interaction') -> str:
         if isinstance(self.from_, OptionSetOptionsArray):
-            return f'Choose {self.choose} from {self.from_.to_str(interaction=interaction)}'
+            return f'Choose {self.choose} from {await discord.utils.maybe_coroutine(self.from_.to_str, interaction)}'
+        elif isinstance(self.from_, OptionSetEquipmentCategory):
+            return f'Choose {self.choose} from ' \
+                   f'{await discord.utils.maybe_coroutine(self.from_.to_str, interaction)}'
+        else:
+            raise TypeError(f'Unhandled choice "from_" type: {self.from_.__class__.__name__}')
 
 
 # ---------- Schemas ----------

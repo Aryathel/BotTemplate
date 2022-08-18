@@ -189,9 +189,9 @@ class Menu(discord.ui.View):
     async def on_timeout(self) -> None:
         if self.interaction:
             if self.delete_on_timeout:
-                await self.interaction.delete_original_message()
+                await self.interaction.delete_original_response()
             else:
-                await self.interaction.edit_original_message(view=None)
+                await self.interaction.edit_original_response(view=None)
 
     async def start(self, content: Optional[str] = None) -> None:
         if not self.interaction.channel.permissions_for(self.interaction.guild.me).embed_links:
@@ -244,7 +244,7 @@ class Menu(discord.ui.View):
     async def quit(self, interaction: discord.Interaction, button: discord.ui.button) -> None:
         await interaction.response.defer()
         if self.delete_on_quit:
-            await interaction.delete_original_message()
+            await interaction.delete_original_response()
         else:
-            await interaction.edit_original_message(view=None)
+            await interaction.edit_original_response(view=None)
         self.stop()

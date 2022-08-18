@@ -18,6 +18,9 @@ class Prerequisite(APIModel):
     minimum_score: int
     ability_score: APIReference
 
+    def to_str(self) -> str:
+        return f"{self.minimum_score} {self.ability_score.name}"
+
 
 @dataclass
 class Multiclassing(ResourceModel):

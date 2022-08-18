@@ -446,9 +446,9 @@ class Role(GroupCog, group_name='role', name='roles'):
                     {"name": "Reason", "value": reason}
                 ]
             )
-            await interaction.edit_original_message(embed=emb, view=None)
+            await interaction.edit_original_response(embed=emb, view=None)
         else:
-            await interaction.delete_original_message()
+            await interaction.delete_original_response()
             emb = self.bot.embeds.get(description=f'Cancelled {role.mention} deletion.')
             await interaction.followup.send(embed=emb, ephemeral=True)
 

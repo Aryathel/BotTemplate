@@ -12,40 +12,47 @@ if TYPE_CHECKING:
     from apis.dnd5e.models.framework import ResourceModel
 
 
-def select_option(label: str, description: str, value: str):
+def select_option(label: str, description: str, value: str, page: int):
     def inner(cls):
         if not hasattr(cls, 'options') or isinstance(getattr(cls, 'options'), property):
             cls.options = []
-        cls.options.append((label, description, value))
+        cls.options.append((label, description, value, page))
         return cls
     return inner
 
 
 class ResourceMenuPageSelect(discord.ui.Select, abc.ABC):
-    options: list[tuple[str, str, str]]
+    options: list[tuple[str, str, str, int]]
     value_mapping: Mapping[str, int]
 
-    def __init__(self, resource: 'ResourceModel') -> None:
+    def __init__(self, page: 'ResourceMenuPage') -> None:
         super().__init__(row=0, placeholder='Page Selection')
-        self.resource = resource
+        self.resource = page.resource
+        self.pages = page.pages
 
         if not hasattr(self, 'options') or not self.options:
             raise AttributeError("At least one option must be specified.")
 
+        self._assign_pages()
+        self._populate()
+
+    def _assign_pages(self) -> None:
+        adjust = 0
         opts = []
         self.value_mapping = {}
-        for i, opt in enumerate(reversed(self.options)):
-            if not len(opt) == 3:
-                raise IndexError("SelectMenu options must have 3 elements.")
-            name, desc, value = opt
+        for opt in reversed(self.options):
+            if not len(opt) == 4:
+                raise IndexError("SelectMenu options must have 4 elements.")
+            label, desc, value, page = opt
+            if label not in [e.author.name for e in self.pages]:
+                adjust += 1
+                continue
             if hasattr(self.resource, 'name'):
                 desc = desc.format(name=self.resource.name)
-            opts.append((name, desc, value))
-            self.value_mapping[value] = i+1
+            opts.append((label, desc, value, page))
+            self.value_mapping[value] = page - adjust
 
         self.options = opts
-
-        self._populate()
 
     def _populate(self) -> None:
         for opt in self.options:
@@ -142,7 +149,7 @@ class ResourceMenu(Menu, metaclass=ResourceMenuMeta, page_type=ResourceMenuPage,
     def _add_select(self) -> None:
         if self.has_select:
             self.clear_items()
-            self.add_item(self.select_type(self.pages.resource))
+            self.add_item(self.select_type(self.pages))
             self.populate()
 
     async def fill(self) -> None:

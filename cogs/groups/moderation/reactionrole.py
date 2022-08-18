@@ -212,7 +212,7 @@ class ReactionRole(GroupCog, group_name='rr', name='role_reaction'):
             )
             confirm = views.Confirmation(interaction, interaction.user, msg=emb, ephemeral=True)
             if not await confirm.get_response():
-                await interaction.delete_original_message()
+                await interaction.delete_original_response()
                 return
             await self.bot.db.role_reactions.delete_by_role_reaction_message_id(msg.role_reaction_msg.id)
             await self.bot.db.role_reaction_messages.delete_by_id(msg.role_reaction_msg.id)
@@ -222,7 +222,7 @@ class ReactionRole(GroupCog, group_name='rr', name='role_reaction'):
                 await self.update_role_reaction_message(msg.message, [])
 
             emb = self.bot.embeds.get(description="Role reactions removed.")
-            await interaction.edit_original_message(embed=emb, view=None)
+            await interaction.delete_original_response(embed=emb, view=None)
             return
 
         rrs = await self.bot.db.role_reactions.get_by_role_reaction_message_id(msg.role_reaction_msg.id)
