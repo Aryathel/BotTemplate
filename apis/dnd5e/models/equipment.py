@@ -5,6 +5,10 @@ from enum import Enum
 from marshmallow import Schema, fields, post_load
 from marshmallow_enum import EnumField
 
+from templates import Interaction
+from templates.views import dnd_resource_menus
+from utils import EmbedFactory
+
 from .framework import ResourceModel, APIModel
 from .general import APIReference, Damage, APIReferenceSchema, DamageSchema
 
@@ -32,17 +36,32 @@ class Cost(APIModel):
     quantity: int
     unit: str
 
+    @property
+    def embed_format(self) -> str:
+        return f"{self.quantity} {self.unit}"
+
 
 @dataclass
 class WeaponRange(APIModel):
     normal: int
     long: Optional[int] = field(default=None)
 
+    @property
+    def embed_format(self) -> str:
+        res = f"`Normal: {self.normal}`"
+        if self.long:
+            res += f'\n`Long: {self.long}`'
+        return res
+
 
 @dataclass
 class WeaponThrowRange(APIModel):
     normal: int
     long: int
+
+    @property
+    def embed_format(self) -> str:
+        return f'`Normal: {self.normal}`\n`Long: {self.long}`'
 
 
 @dataclass
@@ -65,12 +84,34 @@ class Weapon(ResourceModel):
     two_handed_damage: Optional[Damage] = field(default=None)
     throw_range: Optional[WeaponThrowRange] = field(default=None)
 
+    def to_menu(
+            self,
+            interaction: Interaction,
+            factory: EmbedFactory,
+            ephemeral: bool = False
+    ) -> dnd_resource_menus.WeaponMenu:
+        return dnd_resource_menus.WeaponMenu(
+            resource=self,
+            interaction=interaction,
+            embed_factory=factory,
+            ephemeral=ephemeral
+        )
+
 
 @dataclass
 class ArmorClass(APIModel):
     base: int
     dex_bonus: bool
     max_bonus: Optional[int] = field(default=None)
+
+    @property
+    def embed_format(self) -> str:
+        res = f"{self.base}"
+        if self.dex_bonus:
+            res += ' +DEX'
+        if self.max_bonus:
+            res += f' (max +{self.max_bonus})'
+        return res
 
 
 @dataclass
@@ -90,6 +131,19 @@ class Armor(ResourceModel):
     cost: Cost
     weight: int
 
+    def to_menu(
+            self,
+            interaction: Interaction,
+            factory: EmbedFactory,
+            ephemeral: bool = False
+    ) -> dnd_resource_menus.ArmorMenu:
+        return dnd_resource_menus.ArmorMenu(
+            resource=self,
+            interaction=interaction,
+            embed_factory=factory,
+            ephemeral=ephemeral
+        )
+
 
 @dataclass
 class Gear(ResourceModel):
@@ -106,6 +160,19 @@ class Gear(ResourceModel):
     weight: int
     quantity: Optional[int] = field(default=None)
 
+    def to_menu(
+            self,
+            interaction: Interaction,
+            factory: EmbedFactory,
+            ephemeral: bool = False
+    ) -> dnd_resource_menus.GearMenu:
+        return dnd_resource_menus.GearMenu(
+            resource=self,
+            embed_factory=factory,
+            interaction=interaction,
+            ephemeral=ephemeral
+        )
+
 
 @dataclass
 class EquipmentPack(ResourceModel):
@@ -119,6 +186,19 @@ class EquipmentPack(ResourceModel):
     special: list[str]
     contents: list[ContentItem]
     properties: list[APIReference]
+
+    def to_menu(
+            self,
+            interaction: Interaction,
+            factory: EmbedFactory,
+            ephemeral: bool = False
+    ) -> dnd_resource_menus.EquipmentPackMenu:
+        return dnd_resource_menus.EquipmentPackMenu(
+            resource=self,
+            embed_factory=factory,
+            interaction=interaction,
+            ephemeral=ephemeral
+        )
 
 
 @dataclass
@@ -135,11 +215,28 @@ class Tool(ResourceModel):
     contents: list[ContentItem]
     properties: list[APIReference]
 
+    def to_menu(
+            self,
+            interaction: Interaction,
+            factory: EmbedFactory,
+            ephemeral: bool = False
+    ) -> dnd_resource_menus.ToolMenu:
+        return dnd_resource_menus.ToolMenu(
+            resource=self,
+            interaction=interaction,
+            embed_factory=factory,
+            ephemeral=ephemeral
+        )
+
 
 @dataclass
 class VehicleSpeed(APIModel):
     quantity: int
     unit: str
+
+    @property
+    def embed_format(self) -> str:
+        return f'{self.quantity} {self.unit}'
 
 
 @dataclass
@@ -158,6 +255,19 @@ class Vehicle(ResourceModel):
     capacity: Optional[str] = field(default=None)
     weight: Optional[int] = field(default=None)
 
+    def to_menu(
+            self,
+            interaction: Interaction,
+            factory: EmbedFactory,
+            ephemeral: bool = False
+    ) -> dnd_resource_menus.VehicleMenu:
+        return dnd_resource_menus.VehicleMenu(
+            resource=self,
+            interaction=interaction,
+            embed_factory=factory,
+            ephemeral=ephemeral
+        )
+
 
 @dataclass
 class EquipmentCategory(ResourceModel):
@@ -165,6 +275,19 @@ class EquipmentCategory(ResourceModel):
     name: str
     url: str
     equipment: list[APIReference]
+
+    def to_menu(
+            self,
+            interaction: Interaction,
+            factory: EmbedFactory,
+            ephemeral: bool = False
+    ) -> dnd_resource_menus.EquipmentCategoryMenu:
+        return dnd_resource_menus.EquipmentCategoryMenu(
+            resource=self,
+            interaction=interaction,
+            embed_factory=factory,
+            ephemeral=ephemeral
+        )
 
 
 @dataclass
@@ -183,6 +306,19 @@ class MagicItem(ResourceModel):
     variants: list[APIReference]
     variant: bool
 
+    def to_menu(
+            self,
+            interaction: Interaction,
+            factory: EmbedFactory,
+            ephemeral: bool = False
+    ) -> dnd_resource_menus.MagicItemMenu:
+        return dnd_resource_menus.MagicItemMenu(
+            resource=self,
+            interaction=interaction,
+            embed_factory=factory,
+            ephemeral=ephemeral
+        )
+
 
 @dataclass
 class WeaponProperty(ResourceModel):
@@ -190,6 +326,19 @@ class WeaponProperty(ResourceModel):
     name: str
     url: str
     desc: list[str]
+
+    def to_menu(
+            self,
+            interaction: Interaction,
+            factory: EmbedFactory,
+            ephemeral: bool = False
+    ) -> dnd_resource_menus.WeaponPropertyMenu:
+        return dnd_resource_menus.WeaponPropertyMenu(
+            resource=self,
+            interaction=interaction,
+            embed_factory=factory,
+            ephemeral=ephemeral
+        )
 
 
 # ---------- Schemas ----------

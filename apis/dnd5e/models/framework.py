@@ -1,10 +1,13 @@
 import abc
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, TYPE_CHECKING
 
 from marshmallow import Schema, fields as fs, ValidationError
 
 from templates import Interaction
-from utils import EmbedFactory, Menu
+from utils import EmbedFactory
+
+if TYPE_CHECKING:
+    from templates.views.dnd_resource_menus.framework import ResourceMenu
 
 
 class UnionField(fs.Field):
@@ -28,7 +31,7 @@ class UnionField(fs.Field):
                 value = field._deserialize(value, attr, data, **kwargs)
                 return value
             except ValidationError as e:
-                errors += e.messages
+                errors.append(e)
                 continue
         raise ValidationError(errors)
 
@@ -65,5 +68,5 @@ class ResourceModel(APIModel, abc.ABC):
             interaction: Interaction,
             factory: EmbedFactory,
             ephemeral: bool = False
-    ) -> Menu:
+    ) -> 'ResourceMenu':
         raise NotImplementedError

@@ -12,19 +12,16 @@ if TYPE_CHECKING:
     label="General",
     description="General {name} information.",
     value="background_general",
-    page=1
 )
 @select_option(
     label="Personality",
     description="Starting {name} personality traits.",
     value="background_personality",
-    page=2
 )
 @select_option(
     label="Equipment",
     description="Starting {name} equipment.",
     value="background_equipment",
-    page=3
 )
 class BackgroundMenuPageSelect(ResourceMenuPageSelect):
     pass
@@ -51,6 +48,7 @@ class BackgroundMenuPage(ResourceMenuPage):
         language_options = language_options.results
 
         # Home Page
+        self.included = {'General': 1}
         self.pages.append(self.embed_factory.get(
             author_name="General",
             fields=[
@@ -71,6 +69,7 @@ class BackgroundMenuPage(ResourceMenuPage):
         ))
 
         # Personality page
+        self.included['Personality'] = 2
         self.pages.append(self.embed_factory.get(
             author_name="Personality",
             fields=[
@@ -101,6 +100,7 @@ class BackgroundMenuPage(ResourceMenuPage):
         ))
 
         # Equipment page
+        self.included['Equipment'] = 3
         fields = [(
             "Starting Equipment",
             '\n'.join(f'`{e.equipment.name} x{e.quantity}`' for e in self.resource.starting_equipment),

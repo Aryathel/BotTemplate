@@ -13,6 +13,8 @@ from .framework import APIModel
 if TYPE_CHECKING:
     from templates import Interaction
     from .equipment import EquipmentCategory
+    from .spells import Spell
+    from .features import Feature
 
 
 # Option typing
@@ -96,12 +98,28 @@ class DC(APIModel):
     success_type: DCSuccessType
     dc_value: Optional[int] = field(default=None)
 
+    @property
+    def embed_format(self) -> str:
+        res = f"{self.dc_type.name}"
+        if self.dc_value:
+            res += f" {self.dc_value}"
+        if self.success_type == DCSuccessType.half:
+            res += " (On success: half effect)"
+        return res
+
 
 @dataclass
 class Damage(APIModel):
     damage_type: APIReference
     damage_dice: str
     dc: Optional[DC] = field(default=None)
+
+    @property
+    def embed_format(self) -> str:
+        res = f'{self.damage_dice} {self.damage_type.name}'
+        if self.dc:
+            res += f' {self.dc.embed_format}'
+        return res
 
 
 @dataclass
@@ -112,9 +130,33 @@ class OptionPrerequisite(APIModel):
     level: Optional[int] = field(default=None)
     feature: Optional[str] = field(default=None)
 
+    async def format(self, interaction: 'Interaction') -> str:
+        if self.type == OptionPrerequisiteType.proficiency:
+            return f"Proficiency: {self.proficiency.name}"
+        elif self.type == OptionPrerequisiteType.spell:
+            spell: 'Spell' = await interaction.client.dnd_client.lookup_raw(
+                self.spell,
+                interaction.client.dnd_client.lookup_schema_mapping.get('spells')
+            )
+            interaction.client.debug(spell)
+            return f"Spell: {spell.name}"
+        elif self.type == OptionPrerequisiteType.level:
+            return f"Level: {self.level}"
+        elif self.type == OptionPrerequisiteType.feature:
+            feature: 'Feature' = await interaction.client.dnd_client.lookup_raw(
+                self.feature,
+                interaction.client.dnd_client.lookup_schema_mapping.get('features')
+            )
+            interaction.client.debug(feature)
+            return f"Feature: {feature.name}"
+
 
 class Option(APIModel, abc.ABC):
     def to_str(self, interaction: 'Interaction') -> str:
+        raise NotImplementedError
+
+    @property
+    def embed_format(self) -> str:
         raise NotImplementedError
 
 
@@ -125,6 +167,10 @@ class OptionReference(Option):
     def to_str(self, interaction: 'Interaction') -> str:
         return self.item.name
 
+    @property
+    def embed_format(self) -> str:
+        return self.item.name
+
 
 @dataclass
 class OptionAction(Option):
@@ -132,6 +178,10 @@ class OptionAction(Option):
     count: int
     type: ActionType
     desc: Optional[str] = field(default=None)
+
+    @property
+    def embed_format(self) -> str:
+        return f'{self.action_name} x{self.count} ({self.type.name.title()})'
 
 
 @dataclass
@@ -144,6 +194,10 @@ class OptionMultiple(Option):
             [await discord.utils.maybe_coroutine(i.to_str, interaction) for i in self.items_[:-1]] +
             ['and ' + await discord.utils.maybe_coroutine(self.items_[-1].to_str, interaction)]
         )
+
+    @property
+    def embed_format(self) -> str:
+        return ', '.join(item.embed_format for item in self.items_)
 
 
 @dataclass
@@ -158,6 +212,9 @@ class OptionChoice(Option):
                     (self.choice.from_.equipment_category, 'equipment-categories')
                 )
                 return f"Choose {self.choice.choose} from {', '.join(ch.name for ch in choices.equipment)}"
+        elif self.choice.type == 'proficiencies':
+            if isinstance(self.choice.from_, OptionSetOptionsArray):
+                return f"Choose {self.choice.choose} from {self.choice.from_.to_str(interaction)}"
         raise NotImplementedError
 
 
@@ -196,6 +253,10 @@ class AbilityBonus(Option):
     ability_score: APIReference
     bonus: int
 
+    @property
+    def embed_format(self) -> str:
+        return f'+{self.bonus} {self.ability_score.name}'
+
 
 @dataclass
 class OptionBreath(Option):
@@ -203,12 +264,29 @@ class OptionBreath(Option):
     dc: DC
     damage: Optional[list[Damage]] = field(default=None)
 
+    @property
+    def embed_format(self) -> str:
+        res = f"{self.name}"
+        if self.damage:
+            res += ' (' + ', '.join(d.embed_format for d in self.damage) + ')'
+        if self.dc:
+            res += f' [DC: {self.dc.embed_format}]'
+
+        return res
+
 
 @dataclass
 class OptionDamage(Option):
     damage_type: APIReference
     damage_dice: str
     notes: Optional[str] = field(default=None)
+
+    @property
+    def embed_format(self) -> str:
+        res = f"{self.damage_dice} {self.damage_type.name}"
+        if self.notes:
+            res += f" ({self.notes})"
+        return res
 
 
 class OptionSet(APIModel):
@@ -221,6 +299,10 @@ class OptionSetOptionsArray(OptionSet):
 
     def to_str(self, interaction: 'Interaction') -> str:
         return ', '.join(opt.to_str(interaction=interaction) for opt in self.options)
+
+    @property
+    def embed_format(self) -> str:
+        return '\n'.join(f'`{opt.embed_format}`' for opt in self.options)
 
 
 @dataclass
@@ -253,6 +335,24 @@ class Choice(APIModel):
                    f'{await discord.utils.maybe_coroutine(self.from_.to_str, interaction)}'
         else:
             raise TypeError(f'Unhandled choice "from_" type: {self.from_.__class__.__name__}')
+
+    @property
+    def embed_format(self) -> str:
+        if self.type in ['attack', 'action', 'damage']:
+            if isinstance(self.from_, OptionSetOptionsArray):
+                return f'{self.from_.embed_format}'
+        elif self.type in ['proficiencies', 'languages', 'ability_bonuses', 'language']:
+            if self.desc:
+                res = f'{self.desc}\n'
+                pref = '> '
+            else:
+                res = ''
+                pref = ''
+
+            res += '\n'.join(f'{pref}`{opt.embed_format}`' for opt in self.from_.options)
+            return res
+        else:
+            raise ValueError(f'Unhandled choice type: {self.type}')
 
 
 # ---------- Schemas ----------

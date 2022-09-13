@@ -4,17 +4,17 @@ from ...bot import Interaction
 from .framework import ResourceMenu, ResourceMenuPage
 
 if TYPE_CHECKING:
-    from apis.dnd5e.models.game_mechanics import DamageType
+    from apis.dnd5e.models.game_mechanics import MagicSchool
 
 
-class DamageTypeMenuPage(ResourceMenuPage):
-    resource: 'DamageType'
+class MagicSchoolMenuPage(ResourceMenuPage):
+    resource: 'MagicSchool'
 
     async def generate_pages(self, interaction: Interaction) -> None:
         self.pages.append(self.embed_factory.get(
-            description='\n\n'.join(self.resource.desc)
+            description=self.resource.desc,
         ))
 
 
-class DamageTypeMenu(ResourceMenu, page_type=DamageTypeMenuPage):
+class MagicSchoolMenu(ResourceMenu, page_type=MagicSchoolMenuPage):
     pass

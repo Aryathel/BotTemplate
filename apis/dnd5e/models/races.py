@@ -3,6 +3,10 @@ from typing import Optional
 
 from marshmallow import Schema, fields, post_load
 
+from templates import Interaction
+from templates.views import dnd_resource_menus
+from utils import EmbedFactory
+
 from .framework import ResourceModel
 from .general import AbilityBonus, APIReference, Choice, AbilityBonusSchema, APIReferenceSchema, ChoiceSchema
 
@@ -27,6 +31,19 @@ class Race(ResourceModel):
     ability_bonus_options: Optional[Choice] = field(default=None)
     starting_proficiency_options: Optional[Choice] = field(default=None)
     language_options: Optional[Choice] = field(default=None)
+
+    def to_menu(
+            self,
+            interaction: Interaction,
+            factory: EmbedFactory,
+            ephemeral: bool = False
+    ) -> dnd_resource_menus.RaceMenu:
+        return dnd_resource_menus.RaceMenu(
+            resource=self,
+            embed_factory=factory,
+            interaction=interaction,
+            ephemeral=ephemeral
+        )
 
 
 # --------- Schemas ----------

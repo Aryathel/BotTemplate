@@ -5,6 +5,9 @@ from typing import Optional, Union, Mapping
 from marshmallow import Schema, fields, post_load
 from marshmallow_enum import EnumField
 
+from templates import Interaction
+from templates.views import dnd_resource_menus
+from utils import EmbedFactory
 from .framework import ResourceModel, APIModel, UnionField
 from .general import Choice, ActionType, DC, Damage, APIReference, DCSchema, DamageSchema, ChoiceSchema, \
     APIReferenceSchema
@@ -55,12 +58,33 @@ class MonsterUsage(APIModel):
     dice: Optional[str] = field(default=None)
     min_value: Optional[int] = field(default=None)
 
+    @property
+    def embed_format(self) -> str:
+        if self.type == MonsterUsageType.per_day:
+            return f"{self.times} per day"
+        elif self.type == MonsterUsageType.recharge_on_roll:
+            return f"Recharge on Roll: {self.dice} (min {self.min_value} required)"
+        elif self.type == MonsterUsageType.recharge_after_rest:
+            return f"Recharge After Rest: {', '.join(self.rest_types)}"
+        else:
+            raise ValueError(f"Unhandled monster usage type {self.type}")
+
 
 @dataclass
 class MonsterAttack(APIModel):
     name: str
     dc: DC
-    damage: Optional[Damage] = field(default=None)
+    damage: Optional[list[Damage]] = field(default=None)
+
+    @property
+    def embed_format(self) -> str:
+        res = self.name
+        if self.damage:
+
+            res += f" ({', '.join(d.embed_format for d in self.damage)})"
+        if self.dc:
+            res += f" [DC: {self.dc.embed_format}]"
+        return res
 
 
 @dataclass
@@ -68,6 +92,10 @@ class MonsterSubAction(APIModel):
     action_name: str
     count: Union[int, str]
     type: ActionType
+
+    @property
+    def embed_format(self) -> str:
+        return f"{self.action_name} x{self.count} ({self.type.name.title()})"
 
 
 @dataclass
@@ -79,7 +107,7 @@ class MonsterAction(APIModel):
     attack_bonus: Optional[int] = field(default=None)
     dc: Optional[DC] = field(default=None)
     attacks: Optional[list[MonsterAttack]] = field(default=None)
-    damage: Optional[list[Damage]] = field(default=None)
+    damage: Optional[list[Union[Damage, Choice]]] = field(default=None)
     action_options: Optional[Choice] = field(default=None)
     options: Optional[Choice] = field(default=None)
     usage: Optional[MonsterUsage] = field(default=None)
@@ -95,6 +123,10 @@ class MonsterProficiency(APIModel):
     value: int
     proficiency: APIReference
 
+    @property
+    def embed_format(self) -> str:
+        return f"{self.proficiency.name} +{self.value}"
+
 
 @dataclass
 class MonsterReaction(MonsterAction):
@@ -108,6 +140,21 @@ class MonsterSenses(APIModel):
     darkvision: Optional[str] = field(default=None)
     tremorsense: Optional[str] = field(default=None)
     truesight: Optional[str] = field(default=None)
+
+    @property
+    def embed_format(self) -> str:
+        res = []
+        if self.passive_perception:
+            res.append(f"`Passive Perception: {self.passive_perception}`")
+        if self.blindsight:
+            res.append(f"`Blindsight: {self.blindsight}`")
+        if self.darkvision:
+            res.append(f"`Darkvision: {self.darkvision}`")
+        if self.tremorsense:
+            res.append(f"`Tremorsense: {self.tremorsense}`")
+        if self.truesight:
+            res.append(f"`Truesight: {self.truesight}`")
+        return '\n'.join(res)
 
 
 @dataclass
@@ -151,6 +198,23 @@ class MonsterSpeed(APIModel):
     swim: Optional[str] = field(default=None)
     hover: Optional[bool] = field(default=None)
 
+    @property
+    def embed_format(self) -> str:
+        res = []
+        if self.walk:
+            res.append(f"Walk: {self.walk}")
+        if self.burrow:
+            res.append(f"Burrow: {self.burrow}")
+        if self.climb:
+            res.append(f"Climb: {self.climb}")
+        if self.fly:
+            res.append(f"Fly: {self.fly}")
+        if self.swim:
+            res.append(f"Swim: {self.swim}")
+        if self.hover:
+            res.append(f"Hover: {self.hover}")
+        return '\n'.join(f'`{r}`' for r in res)
+
 
 @dataclass
 class Monster(ResourceModel):
@@ -186,6 +250,19 @@ class Monster(ResourceModel):
     subtype: Optional[str] = field(default=None)
     desc: Optional[str] = field(default=None)
     reactions: Optional[list[MonsterReaction]] = field(default=None)
+
+    def to_menu(
+            self,
+            interaction: Interaction,
+            factory: EmbedFactory,
+            ephemeral: bool = False
+    ) -> dnd_resource_menus.MonsterMenu:
+        return dnd_resource_menus.MonsterMenu(
+            resource=self,
+            embed_factory=factory,
+            interaction=interaction,
+            ephemeral=ephemeral
+        )
 
 
 # ---------- Schemas ----------

@@ -1,4 +1,4 @@
-from typing import Tuple, Mapping
+from typing import Tuple, Mapping, Any, Union
 
 import aiohttp_client_cache
 from marshmallow import ValidationError
@@ -6,8 +6,9 @@ from marshmallow.base import SchemaABC
 from async_property import async_cached_property
 
 from templates.errors import SchemaError
-from .models import ResourceModel
 
+from .models import ResourceModel
+from .models.class_levels import ClassLevelSchema
 from .models.common import APIReferenceListSchema, APIReferenceList
 from .models.character_data import AbilityScoreSchema, AlignmentSchema, BackgroundSchema, LanguageSchema, \
     ProficiencySchema, SkillSchema
@@ -23,6 +24,7 @@ from .models.races import RaceSchema
 from .models.rules import RuleSectionSchema, RuleSchema
 from .models.spells import SpellSchema
 from .models.subclasses import SubclassSchema
+from .models.subclass_levels import SubclassLevelSchema
 from .models.subraces import SubraceSchema
 from .models.traits import TraitSchema
 from .utils import populated, with_resource_cache
@@ -90,6 +92,8 @@ class DnD5e:
         'traits': TraitSchema(),
     }
     api_ref_list_schema = APIReferenceListSchema()
+    class_level_schema = ClassLevelSchema()
+    subclass_level_schema = SubclassLevelSchema()
 
     session: aiohttp_client_cache.CachedSession
     _endpoints: Mapping[str, str]
@@ -153,3 +157,13 @@ class DnD5e:
                 raise ValidationError(e)
             else:
                 return schema.load(await r.json()), schema
+
+    async def lookup_raw(self, route: str, response_model: SchemaABC, is_list: bool = False) -> Union[Any, list[Any]]:
+        async with self.session.get(route) as r:
+            r.raise_for_status()
+            if is_list:
+                response = []
+                for entry in await r.json():
+                    response.append(response_model.load(entry))
+                return response
+            return response_model.load(await r.json())

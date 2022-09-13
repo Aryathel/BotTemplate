@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Mapping
 
 from marshmallow import Schema, fields, post_load
 
@@ -7,8 +7,10 @@ from templates import Interaction
 from templates.views import dnd_resource_menus
 from utils import EmbedFactory
 
+from .class_levels import ClassLevel
 from .framework import APIModel, ResourceModel
-from .common import StartingEquipment, APIReference, ResourceFeature, ResourceFeatureSchema, StartingEquipmentSchema
+from .common import StartingEquipment, APIReference, ResourceFeature, ResourceFeatureSchema, StartingEquipmentSchema, \
+    APIReferenceList
 from .general import Choice, APIReferenceSchema, ChoiceSchema
 
 
@@ -54,6 +56,37 @@ class Class(ResourceModel):
 
     spellcasting: Optional[Spellcasting] = field(default=None)
     spells: Optional[str] = field(default=None)
+
+    async def spells_by_level(self, interaction: 'Interaction') -> Mapping[int, list[APIReference]]:
+        if self.spells:
+            spells = {}
+            for i in range(1, 10):
+                lvl_spells: APIReferenceList = await interaction.client.dnd_client.lookup_raw(
+                    self.class_levels + f'/{i}/spells',
+                    interaction.client.dnd_client.api_ref_list_schema
+                )
+                spells[i] = lvl_spells.results
+            return spells
+
+    async def spell_list(self, interaction: 'Interaction') -> APIReferenceList:
+        if self.spells:
+            return await interaction.client.dnd_client.lookup_raw(
+                self.spells,
+                interaction.client.dnd_client.api_ref_list_schema
+            )
+
+    async def class_levels_list(self, interaction: 'Interaction') -> list[ClassLevel]:
+        return await interaction.client.dnd_client.lookup_raw(
+            self.class_levels,
+            interaction.client.dnd_client.class_level_schema,
+            is_list=True
+        )
+
+    async def class_features_list(self, interaction: 'Interaction') -> APIReferenceList:
+        return await interaction.client.dnd_client.lookup_raw(
+            self.url + '/features',
+            interaction.client.dnd_client.api_ref_list_schema
+        )
 
     def to_menu(
             self,

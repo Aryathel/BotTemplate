@@ -104,7 +104,6 @@ class DnDCog(GroupCog, group_name="dnd", name="dungeons&dragons"):
             try:
                 await res.to_menu(interaction, self.embeds).start()
             except NotImplementedError as e:
-                raise e
                 emb = self.bot.embeds.get(
                     description=f"Display not yet implemented for endpoint `{endpoint.replace('-', ' ').title()}`."
                 )
@@ -300,6 +299,94 @@ class DnDCog(GroupCog, group_name="dnd", name="dungeons&dragons"):
         if schema_fail:
             emb.description += f'\n`Missing Schema Fails`: `{schema_fail}`\n`Other Errors`: `{fail-schema_fail}`'
         await interaction.followup.send(embed=emb, file=file, ephemeral=True)
+
+    @decorators.command(
+        name='walklookup',
+        description="This... could take a while.",
+        help="This is restricted to the bot owner. Shows a display for every endpoint, in order.",
+    )
+    @app_commands.rename(resource_endpoint="endpoint")
+    @app_commands.describe(
+        resource_endpoint='The endpoint to walk through the resources of. Used for limiting the test parameters.'
+    )
+    @checks.is_owner()
+    async def dnd_lookup_walk_command(
+            self,
+            interaction: Interaction,
+            resource_endpoint: app_commands.Transform[str, transformers.DnDResourceTransformer] = None,
+    ) -> None:
+        success = 0
+        failed = 0
+        missing_menu_errors = 0
+
+        success_icon = "\N{WHITE HEAVY CHECK MARK}"
+        failure_icon = "\N{CROSS MARK}"
+
+        if resource_endpoint:
+            resources: Mapping[str, tuple[APIReference, str]] = self.bot.dnd_client.resource_cache.get(
+                resource_endpoint)
+        else:
+            resources: Mapping[str, tuple[APIReference, str]] = {}
+            for endpoint, resource_list in self.bot.dnd_client.resource_cache.items():
+                for resource, ref in resource_list.items():
+                    resources[resource] = ref
+
+        if not resources:
+            emb = self.bot.embeds.get(description=f'No route found for endpoint {resource_endpoint}.')
+            await interaction.followup.send(embed=emb, ephemeral=True)
+            return
+
+        emb = self.bot.embeds.get(description='Loading process.')
+        await interaction.response.send_message(embed=emb, ephemeral=True)
+        channel = interaction.channel
+        msg: discord.Message = None
+
+        start = discord.utils.utcnow()
+
+        resources: list[tuple[APIReference, str]] = list(resources.values())
+
+        if resources:
+            for index in resources:
+                try:
+                    lookup, schema = await self.bot.dnd_client.lookup(index)
+                    menu = lookup.to_menu(interaction, self.embeds)
+                    await menu.fill()
+                    for i, page in enumerate(menu.pages.pages):
+                        try:
+                            try:
+                                if msg:
+                                    await msg.edit(embed=page)
+                                else:
+                                    msg = await channel.send(embed=page)
+                            except discord.HTTPException:
+                                msg = await channel.send(embed=page)
+                            success += 1
+                        except Exception as e:
+                            failed += 1
+                            self.bot.error(index[0], index[1].index, i+1, error=e)
+                except Exception as e:
+                    if isinstance(e, NotImplementedError):
+                        missing_menu_errors += 1
+                    failed += 1
+                    self.bot.error({index[1]}, index[0].index, error=e)
+
+        runtime = discord.utils.utcnow() - start
+        minutes, seconds = divmod(int(runtime.total_seconds()), 60)
+
+        emb = self.bot.embeds.get(
+            title=(
+                f"{resource_endpoint.replace('-', ' ').title() if resource_endpoint else 'Lookup'} "
+                f"Walk Results: {failure_icon if failed else success_icon}"
+            ),
+            description=f"`Total`: `{success+failed}`\n`Success`: `{success}`\n`Failed`: `{failed}`",
+            footer=f"Run Time: {minutes} minute{'' if minutes == 1 else 's'}, {seconds} second{'' if seconds == 1 else 's'}"
+        )
+        if missing_menu_errors:
+            emb.description += f'\n`Missing Menu`: `{missing_menu_errors}`\n`Other Errors`: `{failed-missing_menu_errors}`'
+        try:
+            await msg.edit(embed=emb)
+        except Exception:
+            await channel.send(embed=emb)
 
 
 async def setup(bot: Bot) -> None:

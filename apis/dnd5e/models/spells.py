@@ -5,6 +5,10 @@ from typing import Optional, Mapping
 from marshmallow import Schema, fields, post_load
 from marshmallow_enum import EnumField
 
+from templates import Interaction
+from templates.views import dnd_resource_menus
+from utils import EmbedFactory
+
 from .framework import ResourceModel, APIModel
 from .general import APIReference, APIReferenceSchema, DCSuccessType
 
@@ -30,6 +34,10 @@ class SpellAOE(APIModel):
     size: int
     type: SpellAOEType
 
+    @property
+    def embed_format(self) -> str:
+        return f'{self.size} ft. {self.type.name}'
+
 
 @dataclass
 class SpellDamage(APIModel):
@@ -37,12 +45,49 @@ class SpellDamage(APIModel):
     damage_at_slot_level: Optional[Mapping[str, str]] = field(default=None)
     damage_at_character_level: Optional[Mapping[str, str]] = field(default=None)
 
+    @property
+    def embed_format(self) -> str:
+        res = []
+        if self.damage_type:
+            res.append(f'__Damage Type__:\n`{self.damage_type.name}`')
+        if self.damage_at_slot_level:
+            res.append(
+                '__Damage at Slot Level__:\n' +
+                '\n'.join(
+                    f'`{level}: {d}`' for level, d
+                    in self.damage_at_slot_level.items()
+                )
+            )
+        if self.damage_at_character_level:
+            res.append(
+                '__Damage at Character Level__:\n' +
+                '\n'.join(
+                    f'`{level}: {d}`' for level, d
+                    in self.damage_at_character_level.items()
+                )
+            )
+        return '\n\n'.join(res)
+
 
 @dataclass
 class SpellDC(APIModel):
     dc_type: APIReference
     dc_success: DCSuccessType
     desc: Optional[str] = field(default=None)
+
+    @property
+    def embed_format(self) -> str:
+        if self.desc:
+            res = f'{self.desc}\n> '
+        else:
+            res = ''
+
+        res += f'`{self.dc_type.name}`'
+
+        if self.dc_success == DCSuccessType.half:
+            res += ' `(On success: half effect)`'
+
+        return res
 
 
 @dataclass
@@ -69,6 +114,19 @@ class Spell(ResourceModel):
     dc: Optional[SpellDC] = field(default=None)
     attack_type: Optional[str] = field(default=None)
     area_of_effect: Optional[SpellAOE] = field(default=None)
+
+    def to_menu(
+            self,
+            interaction: Interaction,
+            factory: EmbedFactory,
+            ephemeral: bool = False
+    ) -> dnd_resource_menus.SpellMenu:
+        return dnd_resource_menus.SpellMenu(
+            resource=self,
+            embed_factory=factory,
+            interaction=interaction,
+            ephemeral=ephemeral
+        )
 
 
 # ---------- Schemas ----------

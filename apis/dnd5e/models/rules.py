@@ -2,6 +2,9 @@ from dataclasses import dataclass
 
 from marshmallow import Schema, fields, post_load
 
+from templates import Interaction
+from templates.views import dnd_resource_menus
+from utils import EmbedFactory
 from .framework import ResourceModel
 from .general import APIReference, APIReferenceSchema
 
@@ -14,6 +17,19 @@ class RuleSection(ResourceModel):
     url: str
     desc: str
 
+    def to_menu(
+            self,
+            interaction: Interaction,
+            factory: EmbedFactory,
+            ephemeral: bool = False
+    ) -> dnd_resource_menus.RuleSectionMenu:
+        return dnd_resource_menus.RuleSectionMenu(
+            resource=self,
+            embed_factory=factory,
+            interaction=interaction,
+            ephemeral=ephemeral
+        )
+
 
 @dataclass
 class Rule(ResourceModel):
@@ -22,6 +38,19 @@ class Rule(ResourceModel):
     url: str
     desc: str
     subsections: list[APIReference]
+
+    def to_menu(
+            self,
+            interaction: Interaction,
+            factory: EmbedFactory,
+            ephemeral: bool = False
+    ) -> dnd_resource_menus.RuleMenu:
+        return dnd_resource_menus.RuleMenu(
+            resource=self,
+            embed_factory=factory,
+            interaction=interaction,
+            ephemeral=ephemeral
+        )
 
 
 # ---------- Schemas ----------

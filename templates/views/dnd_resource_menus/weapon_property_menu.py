@@ -4,11 +4,11 @@ from ...bot import Interaction
 from .framework import ResourceMenu, ResourceMenuPage
 
 if TYPE_CHECKING:
-    from apis.dnd5e.models.game_mechanics import DamageType
+    from apis.dnd5e.models.equipment import WeaponProperty
 
 
-class DamageTypeMenuPage(ResourceMenuPage):
-    resource: 'DamageType'
+class WeaponPropertyMenuPage(ResourceMenuPage):
+    resource: 'WeaponProperty'
 
     async def generate_pages(self, interaction: Interaction) -> None:
         self.pages.append(self.embed_factory.get(
@@ -16,5 +16,5 @@ class DamageTypeMenuPage(ResourceMenuPage):
         ))
 
 
-class DamageTypeMenu(ResourceMenu, page_type=DamageTypeMenuPage):
+class WeaponPropertyMenu(ResourceMenu, page_type=WeaponPropertyMenuPage):
     pass

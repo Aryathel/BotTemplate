@@ -106,6 +106,19 @@ class Language(ResourceModel):
     script: Optional[str] = field(default=None)
     desc: Optional[str] = field(default=None)
 
+    def to_menu(
+            self,
+            interaction: Interaction,
+            factory: EmbedFactory,
+            ephemeral: bool = False
+    ) -> dnd_resource_menus.LanguageMenu:
+        return dnd_resource_menus.LanguageMenu(
+            resource=self,
+            embed_factory=factory,
+            interaction=interaction,
+            ephemeral=ephemeral
+        )
+
 
 @dataclass
 class Proficiency(ResourceModel):
@@ -117,6 +130,19 @@ class Proficiency(ResourceModel):
     races: list[APIReference]
     reference: APIReference
 
+    def to_menu(
+            self,
+            interaction: Interaction,
+            factory: EmbedFactory,
+            ephemeral: bool = False
+    ) -> dnd_resource_menus.ProficiencyMenu:
+        return dnd_resource_menus.ProficiencyMenu(
+            resource=self,
+            embed_factory=factory,
+            interaction=interaction,
+            ephemeral=ephemeral
+        )
+
 
 @dataclass
 class Skill(ResourceModel):
@@ -125,6 +151,19 @@ class Skill(ResourceModel):
     url: str
     desc: list[str]
     ability_score: APIReference
+
+    def to_menu(
+            self,
+            interaction: Interaction,
+            factory: EmbedFactory,
+            ephemeral: bool = False
+    ) -> dnd_resource_menus.SkillMenu:
+        return dnd_resource_menus.SkillMenu(
+            resource=self,
+            embed_factory=factory,
+            interaction=interaction,
+            ephemeral=ephemeral
+        )
 
 
 # ---------- Schemas ----------

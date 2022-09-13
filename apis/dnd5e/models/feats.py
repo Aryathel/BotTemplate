@@ -2,6 +2,9 @@ from dataclasses import dataclass
 
 from marshmallow import Schema, fields, post_load
 
+from templates import Interaction
+from templates.views import dnd_resource_menus
+from utils import EmbedFactory
 from .framework import ResourceModel
 from .common import Prerequisite, PrerequisiteSchema
 
@@ -14,6 +17,19 @@ class Feat(ResourceModel):
     url: str
     desc: list[str]
     prerequisites: list[Prerequisite]
+
+    def to_menu(
+            self,
+            interaction: Interaction,
+            factory: EmbedFactory,
+            ephemeral: bool = False
+    ) -> dnd_resource_menus.FeatMenu:
+        return dnd_resource_menus.FeatMenu(
+            resource=self,
+            interaction=interaction,
+            embed_factory=factory,
+            ephemeral=ephemeral,
+        )
 
 
 # ---------- Schema ----------

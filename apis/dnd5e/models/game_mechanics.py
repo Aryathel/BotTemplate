@@ -59,6 +59,19 @@ class MagicSchool(ResourceModel):
     url: str
     desc: str
 
+    def to_menu(
+            self,
+            interaction: Interaction,
+            factory: EmbedFactory,
+            ephemeral: bool = False
+    ) -> dnd_resource_menus.MagicSchoolMenu:
+        return dnd_resource_menus.MagicSchoolMenu(
+            resource=self,
+            embed_factory=factory,
+            interaction=interaction,
+            ephemeral=ephemeral
+        )
+
 
 # ---------- Schemas ----------
 class ConditionSchema(Schema):

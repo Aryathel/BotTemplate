@@ -12,6 +12,10 @@ class Prerequisite(APIModel):
     minimum_score: int
     ability_score: APIReference
 
+    @property
+    def embed_format(self) -> str:
+        return f'{self.minimum_score} {self.ability_score.name}'
+
 
 @dataclass
 class APIReferenceList(ResourceModel):
@@ -35,6 +39,10 @@ class ResourceFeature(APIModel):
 class PrerequisiteSchema(Schema):
     minimum_score = fields.Int(required=True)
     ability_score = fields.Nested(APIReferenceSchema(), required=True)
+
+    @post_load
+    def make_api_model(self, data, **kwargs):
+        return Prerequisite(**data)
 
 
 class APIReferenceListSchema(Schema):

@@ -3,6 +3,9 @@ from typing import Optional
 
 from marshmallow import Schema, fields, post_load
 
+from templates import Interaction
+from templates.views import dnd_resource_menus
+from utils import EmbedFactory
 from .framework import ResourceModel, APIModel
 from .general import APIReference, APIReferenceSchema, Choice, ChoiceSchema, OptionPrerequisiteSchema, \
     OptionPrerequisite
@@ -28,6 +31,19 @@ class Feature(ResourceModel):
     subclass: Optional[APIReference] = field(default=None)
     feature_specific: Optional[FeatureSpecific] = field(default=None)
     reference: Optional[str] = field(default=None)
+
+    def to_menu(
+            self,
+            interaction: Interaction,
+            factory: EmbedFactory,
+            ephemeral: bool = False
+    ) -> dnd_resource_menus.FeatureMenu:
+        return dnd_resource_menus.FeatureMenu(
+            resource=self,
+            interaction=interaction,
+            embed_factory=factory,
+            ephemeral=ephemeral,
+        )
 
 
 # ---------- Schemas ----------

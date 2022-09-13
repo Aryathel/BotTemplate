@@ -1,3 +1,4 @@
+from math import ceil
 from typing import TYPE_CHECKING
 
 import discord
@@ -15,42 +16,49 @@ if TYPE_CHECKING:
     label="General",
     description="General {name} class information.",
     value="class_general",
-    page=1
 )
 @select_option(
     label="Proficiencies",
     description="{name} starting and optional proficiencies.",
     value="class_proficiencies",
-    page=2
 )
 @select_option(
     label="Equipment",
     description="{name} starting and option equipment.",
     value="class_equipment",
-    page=3
 )
 @select_option(
     label="Class Info",
     description="{name} subclasses and multi-classing information.",
     value="class_classing",
-    page=4
 )
 @select_option(
     label="Spellcasting",
     description="{name} spellcasting information.",
     value="class_spellcasting",
-    page=5
 )
-class CLassMenuPageSelect(ResourceMenuPageSelect):
+@select_option(
+    label="Spells",
+    description="{name} spell list.",
+    value="class_spells"
+)
+@select_option(
+    label="Levels",
+    description="{name} level information.",
+    value="class_levels"
+)
+class ClassMenuPageSelect(ResourceMenuPageSelect):
     pass
 
 
 class ClassMenuPage(ResourceMenuPage):
     resource: 'Class'
-    included: list[str]
+    included: dict[str, int]
 
     async def generate_pages(self, interaction: Interaction) -> None:
-        self.included = ['General']
+        page = 1
+        self.included = {'General': page}
+        page += 1
         self.pages.append(self.embed_factory.get(
             author_name="General",
             fields=[
@@ -59,27 +67,38 @@ class ClassMenuPage(ResourceMenuPage):
             ]
         ))
 
-        self.included.append('Proficiencies')
-        fields = [
-            ("Starting Proficiencies", '\n'.join(f'`{p.name}`' for p in self.resource.proficiencies), False),
-        ]
+        self.included['Proficiencies'] = page
+        page += 1
+        fields = [(
+            "Starting Proficiencies",
+            '\n'.join(f'`{p.name}`' for p in self.resource.proficiencies),
+            False
+        )]
         for prof_choice in self.resource.proficiency_choices:
-            fields.append((
-                f"Choose {prof_choice.choose}",
-                (f'> {prof_choice.desc}:\n' if hasattr(prof_choice, 'desc') else '') +
-                '\n'.join(f'`{opt.item.name}`' for opt in prof_choice.from_.options)
-            ))
+            if isinstance(prof_choice.from_, OptionSetOptionsArray):
+                opts_str = f'> {prof_choice.desc}:' if hasattr(prof_choice, 'desc') else ''
+                for opt in prof_choice.from_.options:
+                    opt_str = await discord.utils.maybe_coroutine(opt.to_str, interaction)
+                    opts_str += f'\n- `{opt_str}`'
+                fields.append((
+                    f"Choose {prof_choice.choose}",
+                    opts_str
+                ))
+            else:
+                raise TypeError(f"Unhandled choice type received: {prof_choice.from_.__class__.__name__}")
         self.pages.append(self.embed_factory.get(
             author_name="Proficiencies",
             fields=fields
         ))
 
-        self.included.append('Equipment')
+        self.included['Equipment'] = page
+        page += 1
         fields = []
         if self.resource.starting_equipment:
             fields.append((
                 "Starting Equipment",
-                '\n'.join(f'`{e.equipment.name} x{e.quantity}`' for e in self.resource.starting_equipment)
+                '\n'.join(f'`{e.equipment.name} x{e.quantity}`' for e in self.resource.starting_equipment),
+                False
             ))
         for equip_choice in self.resource.starting_equipment_options:
             if isinstance(equip_choice.from_, OptionSetOptionsArray):
@@ -106,9 +125,12 @@ class ClassMenuPage(ResourceMenuPage):
             fields=fields
         ))
 
-        self.included.append('Class Info')
+        self.included['Class Info'] = page
+        page += 1
+        features = await self.resource.class_features_list(interaction)
         fields = [
             ("Subclasses", '\n'.join(f'`{s.name}`' for s in self.resource.subclasses)),
+            ('Features', '\n'.join(f'`{f.name}`' for f in features.results))
         ]
         if self.resource.multi_classing.prerequisites:
             fields.append((
@@ -151,22 +173,70 @@ class ClassMenuPage(ResourceMenuPage):
         ))
 
         if self.resource.spellcasting:
-            self.included.append('Spellcasting')
+            self.included['Spellcasting'] = page
 
             fields = [
+                ("Spellcasting Unlock Level", f"`{self.resource.spellcasting.level}`"),
                 ("Spellcasting Ability", f"`{self.resource.spellcasting.spellcasting_ability.name}`"),
             ]
+            embeds = []
             for info in self.resource.spellcasting.info:
-                fields.append((info.name, '\n\n'.join(info.desc)))
+                embeds.append((info.name, '\n\n'.join(info.desc)))
 
-            print('\n'.join(str(f) for f in fields))
+            if not embeds:
+                self.pages.append(self.embed_factory.get(
+                    author_name="Spellcasting",
+                    fields=fields
+                ))
+                page += 1
+            else:
+                for i, emb in enumerate(embeds):
+                    self.pages.append(self.embed_factory.get(
+                        author_name=f"Spellcasting [{i+1}/{len(embeds)}]",
+                        fields=fields,
+                        description=f"**{emb[0]}**\n\n{emb[1]}"
+                    ))
+                    page += 1
+
+        if self.resource.spells:
+            self.included['Spells'] = page
+            page += 1
+            spell_list = await self.resource.spells_by_level(interaction)
+            fields = []
+            for level, spells in spell_list.items():
+                if spells:
+                    fields.append((
+                        f"Level {level} Spells",
+                        '\n'.join(f'`{s.name}`' for s in spells)
+                    ))
+
             self.pages.append(self.embed_factory.get(
-                author_name="Spellcasting",
+                author_name="Spells",
+                fields=fields
+            ))
+
+        self.included['Levels'] = page
+
+        for level in await self.resource.class_levels_list(interaction):
+            page += 1
+            fields = [
+                ("Total Ability Score Bonuses", f"`{level.ability_score_bonuses}`"),
+                ("Proficiency Bonus", f"`{level.prof_bonus}`"),
+            ]
+            if level.features:
+                fields.append(("Features Gained", '\n'.join(f'`{f.name}`' for f in level.features), False))
+            if level.spellcasting:
+                fields.append(("Spellcasting", level.spellcasting.embed_format, False))
+            if level.class_specific:
+                fields.append(("Class Specific", level.class_specific.embed_format, False))
+
+            self.pages.append(self.embed_factory.get(
+                author_name=f"Level {level.level}",
                 fields=fields
             ))
 
         self._apply_page_numbers()
 
 
-class ClassMenu(ResourceMenu, page_type=ClassMenuPage, select_type=CLassMenuPageSelect):
+class ClassMenu(ResourceMenu, page_type=ClassMenuPage, select_type=ClassMenuPageSelect):
     pass
